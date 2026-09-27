@@ -4591,7 +4591,7 @@ function noteTurnActivity(seat = G.turn){
 function refreshTurnDeadline(){
   if (!iAmHost() || !G.turnSeconds) return;
   G.turnEndsAt = Date.now() + G.turnSeconds * 1000;
-  if (NET.mode === 'host' && NET.ready) netPushTurnDeadline();
+  if (NET.mode === 'host' && NET.ready) netPush();
 }
 
 // The host owns the clock. Everyone else counts down against the deadline it
@@ -4601,7 +4601,7 @@ function startTurnClock(){
   turnTicker = null;
   if (!G.turnSeconds){
     G.turnEndsAt = 0;
-    if (NET.mode === 'host' && NET.ready) netPushTurnDeadline();
+    if (NET.mode === 'host' && NET.ready) netPush();
     const el = $('turnClock');
     if (el) el.textContent = '';
     return;
@@ -5456,12 +5456,6 @@ function netPush(){
       console.error('[harbour/net] state broadcast rejected', e);
       netStatus('not syncing — ' + (e.code || 'see console'));
     });
-}
-
-function netPushTurnDeadline(){
-  if (NET.mode !== 'host' || !NET.ready || !NET.fb) return;
-  NET.fb.set(NET.fb.ref(NET.db, `rooms/${NET.code}/state/turnEndsAt`), G.turnEndsAt)
-    .catch(e => console.error('[harbour/net] turn deadline sync rejected', e));
 }
 
 // One line of truth about the connection, so a silent failure is impossible.
