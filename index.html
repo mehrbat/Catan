@@ -4414,8 +4414,9 @@ function playDev(card){
    8. TURN FLOW
    ============================================================ */
 
-function doRoll(){
+function doRoll(countActivity = true){
   if (NET.mode === 'guest'){ sendIntent('roll'); return; }
+  if (countActivity) noteTurnActivity();
   const p = cur();
   $('d0').classList.add('rolling'); $('d1').classList.add('rolling');
   renderDie($('d0'), 0); renderDie($('d1'), 0);
@@ -4447,7 +4448,6 @@ function doRoll(){
         if (parts.length) log(`${nameOf(i)} collects ${parts.join(', ')}`);
       });
       G.phase = 'main';
-      refreshTurnDeadline();
 
       // let the cards fly, then update the counts as they land
       const flight = flyProduction(G.lastProduction);
@@ -4628,6 +4628,7 @@ function tickTurnClock(){
   if (turnPauseStartedAt){
     const pausedFor = Date.now() - turnPauseStartedAt;
     turnPauseStartedAt = 0;
+    if (!iAmHost()){ if (el) el.textContent = ''; return; }
     G.turnEndsAt += pausedFor;
     if (NET.mode === 'host' && NET.ready) netPush();
   }
@@ -4641,7 +4642,7 @@ function tickTurnClock(){
   if (G.phase === 'roll'){
     log(`${nameOf(G.turn)} ran out of time`);
     refreshTurnDeadline();     // avoid retriggering while the roll animation resolves
-    doRoll();
+    doRoll(false);
   } else {
     log(`${nameOf(G.turn)} ran out of time`);
     doEndTurn();
