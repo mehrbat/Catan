@@ -4321,6 +4321,48 @@ function playDev(card){
   if (NET.mode === 'guest'){ sendIntent('playDev', { card }); return; }
   const p = cur();
   if (!canPlayDev(p.id, card)) return;
+  if (card === 'yearOfPlenty' && !isBot(p.id) && !(isOnline() && p.id !== NET.seat)){
+    const picked = [];
+    const build = box => {
+      box.innerHTML = '';
+      for (const r of RES){
+        const c = resCard(r, G.bank[r], ()=>{
+          if (picked.length < 2 && G.bank[r] > 0){ picked.push(r); }
+          $('trayS').textContent = `${picked.length} of 2 chosen`;
+          build(box); refreshTray();
+        }, picked.includes(r));
+        box.appendChild(c);
+      }
+    };
+    openTray('Year of plenty', '0 of 2 chosen', build, 'TAKE', ()=>{
+      if (picked.length !== 2 || !canPlayDev(p.id, card)) return;
+      consumeDev(p.id, card);
+      announce(p.id, `played ${DEV_LABEL[card]}`, DEV_HINT[card]);
+      for (const r of picked) give(p, r, 1);
+      log(`${nameOf(p.id)} takes ${picked.map(r=>RES_LABEL[r].toLowerCase()).join(' and ')}`);
+      closeTray(); if (checkWin()) return announceWin(); renderAll();
+    }, ()=>picked.length===2);
+    return;
+  }
+  if (card === 'monopoly' && !isBot(p.id) && !(isOnline() && p.id !== NET.seat)){
+    openTray('Monopoly', 'name a resource', box=>{
+      for (const r of RES){
+        box.appendChild(resCard(r, '', ()=>{
+          if (!canPlayDev(p.id, card)) return;
+          consumeDev(p.id, card);
+          announce(p.id, `played ${DEV_LABEL[card]}`, DEV_HINT[card]);
+          let taken = 0;
+          for (const q of G.players){
+            if (q.id === p.id) continue;
+            taken += q.res[r]; p.res[r] += q.res[r]; q.res[r] = 0;
+          }
+          log(`${nameOf(p.id)} corners the ${RES_LABEL[r].toLowerCase()} market — ${taken} taken`, true);
+          closeTray(); if (checkWin()) return announceWin(); renderAll();
+        }, false));
+      }
+    }, 'CANCEL', ()=>{ closeTray(); renderAll(); }, null);
+    return;
+  }
   consumeDev(p.id, card);
   announce(p.id, `played ${DEV_LABEL[card]}`, DEV_HINT[card]);
 
@@ -4357,38 +4399,6 @@ function playDev(card){
   } else if ((card === 'yearOfPlenty' || card === 'monopoly') && isOnline() && p.id !== NET.seat){
     G.pending = { seat:p.id, kind: card === 'monopoly' ? 'monopoly' : 'plenty' };
     renderAll();
-  } else if (card === 'yearOfPlenty'){
-    const picked = [];
-    const build = box => {
-      box.innerHTML = '';
-      for (const r of RES){
-        const c = resCard(r, G.bank[r], ()=>{
-          if (picked.length < 2 && G.bank[r] > 0){ picked.push(r); }
-          $('trayS').textContent = `${picked.length} of 2 chosen`;
-          build(box); refreshTray();
-        }, picked.includes(r));
-        box.appendChild(c);
-      }
-    };
-    openTray('Year of plenty', '0 of 2 chosen', build, 'TAKE', ()=>{
-      for (const r of picked) give(p, r, 1);
-      log(`${nameOf(p.id)} takes ${picked.map(r=>RES_LABEL[r].toLowerCase()).join(' and ')}`);
-      closeTray(); if (checkWin()) return announceWin(); renderAll();
-    }, ()=>picked.length===2);
-  } else if (card === 'monopoly'){
-    openTray('Monopoly', 'name a resource', box=>{
-      for (const r of RES){
-        box.appendChild(resCard(r, '', ()=>{
-          let taken = 0;
-          for (const q of G.players){
-            if (q.id === p.id) continue;
-            taken += q.res[r]; p.res[r] += q.res[r]; q.res[r] = 0;
-          }
-          log(`${nameOf(p.id)} corners the ${RES_LABEL[r].toLowerCase()} market — ${taken} taken`, true);
-          closeTray(); if (checkWin()) return announceWin(); renderAll();
-        }, false));
-      }
-    }, 'CANCEL', ()=>{ closeTray(); renderAll(); }, null);
   }
   renderAll();
 }
