@@ -4582,6 +4582,7 @@ function botDoSetup(pid){
 // Single entry point for "a turn is now starting" — hands off to the bot
 // driver or leaves the board to the human.
 let turnTicker = null, autoRollTimer = null;
+let turnWasPaused = false;
 
 function noteTurnActivity(seat = G.turn){
   if (!iAmHost() || !G.turnSeconds) return;
@@ -4598,6 +4599,7 @@ function refreshTurnDeadline(){
 function startTurnClock(){
   clearInterval(turnTicker);
   turnTicker = null;
+  turnWasPaused = false;
   if (!G.turnSeconds){
     G.turnEndsAt = 0;
     const el = $('turnClock');
@@ -4616,7 +4618,16 @@ function clockPaused(){
 function tickTurnClock(){
   if (!G.turnSeconds) return;
   const el = $('turnClock');
-  if (!G.turnEndsAt || clockPaused()){ if (el) el.textContent = ''; return; }
+  if (!G.turnEndsAt){ if (el) el.textContent = ''; return; }
+  if (clockPaused()){
+    turnWasPaused = true;
+    if (el) el.textContent = '';
+    return;
+  }
+  if (turnWasPaused){
+    turnWasPaused = false;
+    refreshTurnDeadline();
+  }
   const left = Math.max(0, Math.ceil((G.turnEndsAt - Date.now()) / 1000));
   if (el){
     el.textContent = `${left}s`;
@@ -5955,9 +5966,10 @@ function hostBriefing(){
           Everyone else follows what you send them, so if you close this tab the
           table stops. Leave it open until you are done.</p>
         <p style="margin-bottom:9px"><b style="color:var(--ink)">Need to move things along?</b>
-          If inactivity timeout is off, type <b style="color:var(--ink)">/voteskip</b> in chat to put
-          it to the table. Everyone else presses <b style="color:var(--ink)">1</b> for yes or
-          <b style="color:var(--ink)">2</b> for no, and a majority carries it.</p>
+          If you enabled inactivity timeout, idle turns auto-advance. If it is off, type
+          <b style="color:var(--ink)">/voteskip</b> in chat to put it to the table. Everyone
+          else presses <b style="color:var(--ink)">1</b> for yes or <b style="color:var(--ink)">2</b>
+          for no, and a majority carries it.</p>
         <p style="margin-bottom:9px"><b style="color:var(--ink)">Chat</b> is bottom right,
           50 characters a message. Press <b style="color:var(--ink)">Enter</b> to jump to it.</p>
         <p style="margin-bottom:9px"><b style="color:var(--ink)">Trading</b> is the OFFER button.
