@@ -931,10 +931,6 @@ body.tucked #railR{ display:none }
     <!-- shared by JOIN and HOST so there is only ever one name to type -->
     <div id="identity" class="hide">
       <input id="joinName" maxlength="12" placeholder="Your name" autocomplete="off">
-      <label class="optRow">
-        <input type="checkbox" id="autoRollBox">
-        <span>Roll the dice for me automatically</span>
-      </label>
     </div>
 
     <div id="netOff" class="hide">
@@ -953,6 +949,14 @@ body.tucked #railR{ display:none }
         <div class="q" style="margin-top:14px">VICTORY TARGET</div>
         <input id="playTarget" type="number" min="3" max="30" inputmode="numeric">
         <p class="note">Pick how many victory points it takes to win this game.</p>
+        <label class="optRow" style="margin-top:12px">
+          <input type="checkbox" id="playAutoRoll">
+          <span>Automatically roll dice at the start of each turn</span>
+        </label>
+        <label class="optRow">
+          <input type="checkbox" id="playTimeout">
+          <span>End turns after 30s of inactivity</span>
+        </label>
         <div class="q" style="margin-top:14px">WHO PLAYS THE OTHER SEATS?</div>
         <div id="modePick"></div>
       </div>
@@ -982,6 +986,14 @@ body.tucked #railR{ display:none }
         <div class="secHead" style="margin-top:18px">VICTORY TARGET</div>
         <input id="hostTarget" type="number" min="3" max="30" inputmode="numeric">
         <p class="note">Choose the score needed to win before you open the room.</p>
+        <label class="optRow" style="margin-top:8px">
+          <input type="checkbox" id="hostAutoRoll">
+          <span>Automatically roll dice at the start of each turn</span>
+        </label>
+        <label class="optRow">
+          <input type="checkbox" id="hostTimeout">
+          <span>End turns after 30s of inactivity</span>
+        </label>
 
         <div class="secHead" style="margin-top:18px">WHO CAN JOIN</div>
         <div id="privacyPick"></div>
@@ -1087,9 +1099,6 @@ const clamp = (v,a,b) => v<a?a:(v>b?b:v);
 // Free-build is a debug switch defined much later; the rules layer only asks.
 const ADMIN_FREE = () => typeof adminFree !== 'undefined' && adminFree;
 
-// Turns are untimed. Set this above zero to bring the countdown back; the clock
-// was ending turns while people were still thinking about a trade.
-const TURN_SECONDS = 0;
 // anything a player types is shown as text, never as markup
 const esc = t => String(t).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 
@@ -1291,6 +1300,8 @@ const G = {
   robberReturn: 'main',       // the phase to resume once the robber is settled
   discardDue: {},             // seat -> cards still owed after a seven
   turnEndsAt: 0,              // host's clock; everyone counts down against it
+  autoRoll: false,            // host-selected game option
+  turnSeconds: 0,             // host-selected inactivity timeout (0 = off)
   forceRoll: 0,               // debug panel: pin the next dice total
   vote: null                  // { target, yes:[], no:[], ends } while a skip vote runs
 };
@@ -1347,6 +1358,7 @@ function newGame(nPlayers, seed){
   G.pending = null; G.setupVertex = -1; G.offer = null;
   G.rollSeq = 0; G.rollBy = -1; G.awaitRobber = -1; G.turnEndsAt = 0;
   G.robberReturn = 'main'; G.vote = null; G.forceRoll = 0;
+  G.autoRoll = false; G.turnSeconds = 0;
   G.discardDue = {};
 
   // Two passes round the table in the same direction, matching normal turn
@@ -1910,6 +1922,7 @@ function serializeState(){
                        get:{ ...G.offer.get }, replies:{ ...G.offer.replies } } : null,
     rollSeq: G.rollSeq, rollBy: G.rollBy,
     awaitRobber: G.awaitRobber, robberReturn: G.robberReturn, turnEndsAt: G.turnEndsAt,
+    autoRoll: G.autoRoll, turnSeconds: G.turnSeconds,
     vote: G.vote ? { target:G.vote.target, yes:G.vote.yes.slice(),
                      no:G.vote.no.slice(), ends:G.vote.ends } : null,
     discardDue: { ...G.discardDue },
@@ -1965,6 +1978,8 @@ function applyState(snap){
   G.rollBy = snap.rollBy ?? -1;
   G.awaitRobber = snap.awaitRobber ?? -1;
   G.robberReturn = snap.robberReturn || 'main';
+  G.autoRoll = !!snap.autoRoll;
+  G.turnSeconds = snap.turnSeconds || 0;
   G.vote = snap.vote
     ? { target:snap.vote.target, yes:(snap.vote.yes||[]).slice(),
         no:(snap.vote.no||[]).slice(), ends:snap.vote.ends || 0 }
@@ -4046,6 +4061,7 @@ function onClick(){
     log(`${nameOf(pid)} lays a road`);
     if (res.tookLongestRoad) announce(pid, 'takes Longest Road', `${G.longestLen} roads`);
   }
+  noteTurnActivity(pid);
 
   const done = mode.onDone;
   mode = null; clearNodes(); hidePrompt();
@@ -4321,6 +4337,7 @@ function playDev(card){
   if (NET.mode === 'guest'){ sendIntent('playDev', { card }); return; }
   const p = cur();
   if (!canPlayDev(p.id, card)) return;
+  noteTurnActivity();
   if (card === 'yearOfPlenty' && !isBot(p.id) && !(isOnline() && p.id !== NET.seat)){
     const picked = [];
     const build = box => {
@@ -4407,8 +4424,9 @@ function playDev(card){
    8. TURN FLOW
    ============================================================ */
 
-function doRoll(){
+function doRoll(countActivity = true){
   if (NET.mode === 'guest'){ sendIntent('roll'); return; }
+  if (countActivity) noteTurnActivity();
   const p = cur();
   $('d0').classList.add('rolling'); $('d1').classList.add('rolling');
   renderDie($('d0'), 0); renderDie($('d1'), 0);
@@ -4501,6 +4519,7 @@ function doBuyDev(){
   const p = cur();
   const card = buyDev(p.id);
   if (!card) return;
+  noteTurnActivity();
   announce(p.id, 'bought a development card',
     `${G.devDeck.length} left`, false);
   if (checkWin()) return announceWin();
@@ -4572,16 +4591,32 @@ function botDoSetup(pid){
 
 // Single entry point for "a turn is now starting" — hands off to the bot
 // driver or leaves the board to the human.
-let AUTO_ROLL = false;          // your own setting; never shared
 let turnTicker = null, autoRollTimer = null;
+let turnPauseStartedAt = 0;
+
+function noteTurnActivity(seat = G.turn){
+  if (!iAmHost() || !G.turnSeconds) return;
+  if (seat !== G.turn || (G.phase !== 'roll' && G.phase !== 'main')) return;
+  refreshTurnDeadline();
+}
+function refreshTurnDeadline(){
+  if (!iAmHost() || !G.turnSeconds) return;
+  G.turnEndsAt = Date.now() + G.turnSeconds * 1000;
+}
 
 // The host owns the clock. Everyone else counts down against the deadline it
 // broadcasts, so the number on screen agrees to within a second.
 function startTurnClock(){
   clearInterval(turnTicker);
   turnTicker = null;
-  if (!TURN_SECONDS){ G.turnEndsAt = 0; const el = $('turnClock'); if (el) el.textContent = ''; return; }
-  if (iAmHost()) G.turnEndsAt = Date.now() + TURN_SECONDS * 1000;
+  turnPauseStartedAt = 0;
+  if (!G.turnSeconds){
+    G.turnEndsAt = 0;
+    const el = $('turnClock');
+    if (el) el.textContent = '';
+    return;
+  }
+  if (!clockPaused()) refreshTurnDeadline();
   turnTicker = setInterval(tickTurnClock, 250);
 }
 function clockPaused(){
@@ -4591,9 +4626,22 @@ function clockPaused(){
       || discardsOutstanding();
 }
 function tickTurnClock(){
-  if (!TURN_SECONDS) return;
+  if (!G.turnSeconds) return;
   const el = $('turnClock');
-  if (!G.turnEndsAt || clockPaused()){ if (el) el.textContent = ''; return; }
+  if (!G.turnEndsAt){ if (el) el.textContent = ''; return; }
+  if (clockPaused()){
+    const resettablePause = ADMIN_PAUSE || G.awaitRobber >= 0 || !!G.pending || discardsOutstanding();
+    if (resettablePause && !turnPauseStartedAt) turnPauseStartedAt = Date.now();
+    if (el) el.textContent = '';
+    return;
+  }
+  if (turnPauseStartedAt){
+    const pausedFor = Date.now() - turnPauseStartedAt;
+    turnPauseStartedAt = 0;
+    if (!iAmHost()){ if (el) el.textContent = ''; return; }
+    G.turnEndsAt += pausedFor;
+    if (NET.mode === 'host' && NET.ready) netPush();
+  }
   const left = Math.max(0, Math.ceil((G.turnEndsAt - Date.now()) / 1000));
   if (el){
     el.textContent = `${left}s`;
@@ -4601,23 +4649,20 @@ function tickTurnClock(){
   }
   if (left > 0 || !iAmHost() || isBot(G.turn)) return;
 
-  // out of time: roll for them if they never did, otherwise pass it on
   if (G.phase === 'roll'){
     log(`${nameOf(G.turn)} ran out of time`);
-    doRoll();
-    G.turnEndsAt = Date.now() + 10000;      // a moment to spend what they got
+    refreshTurnDeadline();     // avoid retriggering while the roll animation resolves
+    doRoll(false);
   } else {
     log(`${nameOf(G.turn)} ran out of time`);
     doEndTurn();
   }
 }
 
-// Auto roll only ever acts for you, on your own turn.
+// The host owns the flow, so auto-roll is applied there for every human seat.
 function maybeAutoRoll(){
   clearTimeout(autoRollTimer);
-  if (!AUTO_ROLL || G.phase !== 'roll' || mode) return;
-  const mine = isOnline() ? G.turn === NET.seat : !cur().bot;
-  if (!mine) return;
+  if (!G.autoRoll || G.phase !== 'roll' || mode || !iAmHost()) return;
   autoRollTimer = setTimeout(()=>{ if (G.phase === 'roll' && !mode) doRoll(); }, 900);
 }
 
@@ -4723,6 +4768,7 @@ function botDiscardAll(){
 function proposeOffer(give, get){
   if (NET.mode === 'guest'){ sendIntent('offer', { give, get }); return; }
   if (openOffer(G.turn, give, get)){
+    noteTurnActivity();
     log(`${nameOf(G.turn)} offers ${fmtBag(give)} for ${fmtBag(get)}`);
     renderAll();
   }
@@ -4734,12 +4780,14 @@ function replyToOffer(answer){
 function takeOffer(withSeat){
   if (NET.mode === 'guest'){ sendIntent('acceptTrade', { with:withSeat }); return; }
   const done = settleOffer(G.turn, withSeat);
+  if (done) noteTurnActivity();
   if (done) announce(G.turn, `traded with ${G.players[withSeat].name}`,
     `${fmtBag(done.give)} → ${fmtBag(done.get)}`, false);
   closeTray(); renderAll();
 }
 function dropOffer(){
   if (NET.mode === 'guest'){ sendIntent('cancelOffer'); closeTray(); return; }
+  noteTurnActivity();
   G.offer = null; closeTray(); renderAll();
 }
 
@@ -4974,6 +5022,8 @@ let hostSeatCount = 4;
 let hostPublic = true;
 let hostWinVP = defaultWinVP(hostSeatCount);
 let hostWinVPCustom = false;
+let hostAutoRoll = false;
+let hostTimeout = false;
 
 // A small helper so every choice row in the menu behaves the same way.
 function pickerRow(host, options, current, onPick){
@@ -5005,7 +5055,7 @@ function readTargetInput(id, fallback){
   return clamp(Math.round(+($(id)?.value || fallback)), 3, 30);
 }
 
-// JOIN and HOST need a name and the auto-roll choice; PLAY and RULES do not.
+// JOIN and HOST need a name; PLAY and RULES do not.
 function showIdentity(pane){
   const online = pane === 'join' || pane === 'host';
   $('identity').classList.toggle('hide', !online || !netConfigured());
@@ -5034,17 +5084,20 @@ function wireOnlineTab(){
   if (netConfigured())
     watchPublic().catch(e => { $('joinErr').textContent = netExplain(e); });
 
-  // one name field and one auto-roll box, shared by both online tabs
-  const grab = () => {
-    AUTO_ROLL = !!$('autoRollBox').checked;
-    return $('joinName').value;
-  };
+  const hostAuto = $('hostAutoRoll');
+  const hostTmo = $('hostTimeout');
+  if (hostAuto) hostAuto.checked = hostAutoRoll;
+  if (hostTmo) hostTmo.checked = hostTimeout;
+  if (hostAuto) hostAuto.onchange = ()=>{ hostAutoRoll = !!hostAuto.checked; };
+  if (hostTmo) hostTmo.onchange = ()=>{ hostTimeout = !!hostTmo.checked; };
+
+  const grab = () => $('joinName').value;
   $('hostBtn').onclick = async ()=>{
     const fallback = defaultWinVP(hostSeatCount);
     hostWinVP = readTargetInput('hostTarget', fallback);
     hostWinVPCustom = hostWinVP !== fallback;
     $('hostErr').textContent = 'creating…';
-    try { await netHost(hostSeatCount, grab(), hostPublic, hostWinVP, hostWinVPCustom); $('hostErr').textContent = ''; }
+    try { await netHost(hostSeatCount, grab(), hostPublic, hostWinVP, hostWinVPCustom, hostAutoRoll, hostTimeout); $('hostErr').textContent = ''; }
     catch(e){ console.error('[harbour/net]', e); $('hostErr').textContent = netExplain(e); }
   };
   $('joinBtn').onclick = async ()=>{
@@ -5096,6 +5149,8 @@ function wireOnlineTab(){
 let seatCount = 4;
 let vsBots = true;
 let playWinVP = defaultWinVP(seatCount);
+let playAutoRoll = false;
+let playTimeout = false;
 let menuPane = 'play';
 {
   const seatOpts = Array.from({length:MAX_SEATS-1}, (_,i)=>[String(i+2), i+2]);
@@ -5108,6 +5163,12 @@ let menuPane = 'play';
   setTargetInput('playTarget', playWinVP);
   pickerRow($('modePick'), [['BOTS',true],['PASS & PLAY',false]],
     ()=>vsBots, v => vsBots = v);
+  const playAuto = $('playAutoRoll');
+  const playTmo = $('playTimeout');
+  if (playAuto) playAuto.checked = playAutoRoll;
+  if (playTmo) playTmo.checked = playTimeout;
+  if (playAuto) playAuto.onchange = ()=>{ playAutoRoll = !!playAuto.checked; };
+  if (playTmo) playTmo.onchange = ()=>{ playTimeout = !!playTmo.checked; };
 }
 
 // ---- tab switching ----
@@ -5137,6 +5198,8 @@ $('startBtn').onclick = ()=>{
   botStop();
   newGame(seatCount);
   WIN_VP = playWinVP;
+  G.autoRoll = !!playAutoRoll;
+  G.turnSeconds = playTimeout ? 30 : 0;
   // seat 0 is always you; the rest are bots unless you asked for pass & play
   for (const p of G.players) p.bot = vsBots && p.id !== 0;
   buildBoardMeshes();
@@ -5241,7 +5304,7 @@ async function netBoot(){
 
 // Online tables are people only. Seats stay open until somebody claims them,
 // and the game starts with exactly whoever turned up.
-async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCount), customWinVP=false){
+async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCount), customWinVP=false, autoRoll=false, timeout=false){
   const fb = await netBoot();
   NET.mode = 'host';
   NET.seat = 0;
@@ -5251,10 +5314,14 @@ async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCou
   NET.roomRef = fb.ref(NET.db, 'rooms/' + NET.code);
   hostWinVP = clamp(Math.round(+winVP || defaultWinVP(seatCount)), 3, 30);
   hostWinVPCustom = !!customWinVP;
+  hostAutoRoll = !!autoRoll;
+  hostTimeout = !!timeout;
 
   botStop();
   newGame(seatCount);
   WIN_VP = hostWinVP;
+  G.autoRoll = hostAutoRoll;
+  G.turnSeconds = hostTimeout ? 30 : 0;
   G.players.forEach(p => { p.bot = false; });
   G.players[0].name = NET.myName;
 
@@ -5453,6 +5520,7 @@ function hostApplyIntent(it){
         const r = placeRoad(it.id, seat, opts);
         placeWithGesture(seat, addRoadMesh(it.id, seat), edges[it.id].x, edges[it.id].z);
         if (!inSetup && G.freeRoads > 0) G.freeRoads--;
+        noteTurnActivity(seat);
         log(`${nameOf(seat)} lays a road`);
         if (r.tookLongestRoad) announce(seat, 'takes Longest Road', `${G.longestLen} roads`);
         if (inSetup){
@@ -5472,6 +5540,7 @@ function hostApplyIntent(it){
         const inSetup = G.phase === 'setup';
         placeSettlement(it.id, seat, inSetup);
         placeWithGesture(seat, addBuildingMesh(it.id, seat, 'settlement'), verts[it.id].x, verts[it.id].z);
+        noteTurnActivity(seat);
         announce(seat, 'built a settlement', '+1 VP', false);
         // setup pairs a settlement with a road; remember which one to attach to
         if (inSetup) G.setupVertex = it.id;
@@ -5481,12 +5550,16 @@ function hostApplyIntent(it){
       if (canPlaceCity(it.id, seat)){
         placeCity(it.id, seat);
         placeWithGesture(seat, addBuildingMesh(it.id, seat, 'city'), verts[it.id].x, verts[it.id].z);
+        noteTurnActivity(seat);
         announce(seat, 'upgraded to a city', 'collects double', false);
       }
       break;
     case 'dev': {
       const card = buyDev(seat);
-      if (card) announce(seat, 'bought a development card', `${G.devDeck.length} left`, false);
+      if (card){
+        noteTurnActivity(seat);
+        announce(seat, 'bought a development card', `${G.devDeck.length} left`, false);
+      }
       break;
     }
     case 'playDev':
@@ -5496,6 +5569,7 @@ function hostApplyIntent(it){
       const p = G.players[seat];
       if (canBankTrade(p, it.give, it.want)){
         const rate = bankTrade(p, it.give, it.want);
+        noteTurnActivity(seat);
         announce(seat, 'traded with the bank',
           `${rate} ${RES_LABEL[it.give].toLowerCase()} → 1 ${RES_LABEL[it.want].toLowerCase()}`, false);
       }
@@ -5545,8 +5619,10 @@ function hostApplyIntent(it){
       break;
     }
     case 'offer':
-      if (openOffer(seat, it.give || {}, it.get || {}))
+      if (openOffer(seat, it.give || {}, it.get || {})){
+        noteTurnActivity(seat);
         log(`${nameOf(seat)} offers ${fmtBag(it.give||{})} for ${fmtBag(it.get||{})}`);
+      }
       break;
     case 'reply':
       answerOffer(seat, it.answer);
@@ -5556,12 +5632,15 @@ function hostApplyIntent(it){
       break;
     case 'acceptTrade': {
       const done = settleOffer(seat, it.with);
-      if (done) announce(seat, `traded with ${G.players[done.with].name}`,
-        `${fmtBag(done.give)} → ${fmtBag(done.get)}`, false);
+      if (done){
+        noteTurnActivity(seat);
+        announce(seat, `traded with ${G.players[done.with].name}`,
+          `${fmtBag(done.give)} → ${fmtBag(done.get)}`, false);
+      }
       break;
     }
     case 'cancelOffer':
-      if (G.offer && G.offer.from === seat) G.offer = null;
+      if (G.offer && G.offer.from === seat){ noteTurnActivity(seat); G.offer = null; }
       break;
     case 'end':
       doEndTurn();
@@ -5712,7 +5791,7 @@ function guestTick(){
   if (G.pending) return;
   if (G.offer) return;             // the offer tray owns the screen while it is up
 
-  if (TURN_SECONDS && !turnTicker) startTurnClock();
+  if (G.turnSeconds && !turnTicker) startTurnClock();
   maybeAutoRoll();
 
   if (G.awaitRobber === NET.seat){
@@ -5799,7 +5878,6 @@ function renderPublic(all){
     b.textContent = 'SIT DOWN';
     b.onclick = async ()=>{
       $('joinErr').textContent = 'joining…';
-      AUTO_ROLL = !!($('autoRollBox') && $('autoRollBox').checked);
       try { await netJoin(l.code, $('joinName').value); $('joinErr').textContent = ''; }
       catch(e){ console.error('[harbour/net]', e); $('joinErr').textContent = netExplain(e); }
     };
@@ -5901,10 +5979,12 @@ function hostBriefing(){
         <p style="margin-bottom:9px"><b style="color:var(--ink)">The game runs on your machine.</b>
           Everyone else follows what you send them, so if you close this tab the
           table stops. Leave it open until you are done.</p>
-        <p style="margin-bottom:9px"><b style="color:var(--ink)">Turns are untimed.</b>
-          If somebody stalls, type <b style="color:var(--ink)">/voteskip</b> in chat to put
-          it to the table. Everyone else presses <b style="color:var(--ink)">1</b> for yes or
-          <b style="color:var(--ink)">2</b> for no, and a majority carries it.</p>
+        <p style="margin-bottom:9px"><b style="color:var(--ink)">Need to move things along?</b>
+          If you enabled inactivity timeout, idle turns are moved along automatically
+          (a missed roll is rolled first, then inactivity can still end the turn). If it is off, type
+          <b style="color:var(--ink)">/voteskip</b> in chat to put it to the table. Everyone
+          else presses <b style="color:var(--ink)">1</b> for yes or <b style="color:var(--ink)">2</b>
+          for no, and a majority carries it.</p>
         <p style="margin-bottom:9px"><b style="color:var(--ink)">Chat</b> is bottom right,
           50 characters a message. Press <b style="color:var(--ink)">Enter</b> to jump to it.</p>
         <p style="margin-bottom:9px"><b style="color:var(--ink)">Trading</b> is the OFFER button.
@@ -5988,10 +6068,14 @@ async function netStartGame(){
 
   const compact = {};
   here.forEach((h, i) => { compact[i] = { uid:h.uid, name:h.name }; });
+  const autoRoll = !!G.autoRoll;
+  const turnSeconds = G.turnSeconds || 0;
 
   botStop();
   newGame(here.length, G.seed);
   WIN_VP = hostWinVPCustom ? hostWinVP : defaultWinVP(here.length);
+  G.autoRoll = autoRoll;
+  G.turnSeconds = turnSeconds;
   G.players.forEach((p, i) => { p.bot = false; p.name = here[i].name; });
   NET.seat = here.findIndex(h => h.uid === NET.uid);
   NET.seats = compact;
