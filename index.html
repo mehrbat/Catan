@@ -4582,7 +4582,7 @@ function botDoSetup(pid){
 // Single entry point for "a turn is now starting" — hands off to the bot
 // driver or leaves the board to the human.
 let turnTicker = null, autoRollTimer = null;
-let turnWasPaused = false;
+let turnPauseStartedAt = 0;
 
 function noteTurnActivity(seat = G.turn){
   if (!iAmHost() || !G.turnSeconds) return;
@@ -4599,7 +4599,7 @@ function refreshTurnDeadline(){
 function startTurnClock(){
   clearInterval(turnTicker);
   turnTicker = null;
-  turnWasPaused = false;
+  turnPauseStartedAt = 0;
   if (!G.turnSeconds){
     G.turnEndsAt = 0;
     const el = $('turnClock');
@@ -4621,13 +4621,13 @@ function tickTurnClock(){
   if (!G.turnEndsAt){ if (el) el.textContent = ''; return; }
   if (clockPaused()){
     const resettablePause = ADMIN_PAUSE || G.awaitRobber >= 0 || !!G.pending || discardsOutstanding();
-    if (resettablePause) turnWasPaused = true;
+    if (resettablePause && !turnPauseStartedAt) turnPauseStartedAt = Date.now();
     if (el) el.textContent = '';
     return;
   }
-  if (turnWasPaused){
-    turnWasPaused = false;
-    refreshTurnDeadline();
+  if (turnPauseStartedAt){
+    if (iAmHost()) G.turnEndsAt += Date.now() - turnPauseStartedAt;
+    turnPauseStartedAt = 0;
   }
   const left = Math.max(0, Math.ceil((G.turnEndsAt - Date.now()) / 1000));
   if (el){
