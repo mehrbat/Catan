@@ -4417,6 +4417,7 @@ function playDev(card){
 function doRoll(){
   if (NET.mode === 'guest'){ sendIntent('roll'); return; }
   noteTurnActivity();
+  if (NET.mode === 'host' && NET.ready) netPush();
   const p = cur();
   $('d0').classList.add('rolling'); $('d1').classList.add('rolling');
   renderDie($('d0'), 0); renderDie($('d1'), 0);
@@ -4591,7 +4592,6 @@ function noteTurnActivity(seat = G.turn){
 function refreshTurnDeadline(){
   if (!iAmHost() || !G.turnSeconds) return;
   G.turnEndsAt = Date.now() + G.turnSeconds * 1000;
-  if (NET.mode === 'host' && NET.ready) netPush();
 }
 
 // The host owns the clock. Everyone else counts down against the deadline it
@@ -4601,12 +4601,11 @@ function startTurnClock(){
   turnTicker = null;
   if (!G.turnSeconds){
     G.turnEndsAt = 0;
-    if (NET.mode === 'host' && NET.ready) netPush();
     const el = $('turnClock');
     if (el) el.textContent = '';
     return;
   }
-  refreshTurnDeadline();
+  if (!clockPaused()) refreshTurnDeadline();
   turnTicker = setInterval(tickTurnClock, 250);
 }
 function clockPaused(){
