@@ -4639,6 +4639,7 @@ function tickTurnClock(){
 
   if (G.phase === 'roll'){
     log(`${nameOf(G.turn)} ran out of time`);
+    refreshTurnDeadline();     // avoid retriggering while the roll animation resolves
     doRoll();
   } else {
     log(`${nameOf(G.turn)} ran out of time`);
