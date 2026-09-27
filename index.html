@@ -6050,12 +6050,14 @@ async function netStartGame(){
 
   const compact = {};
   here.forEach((h, i) => { compact[i] = { uid:h.uid, name:h.name }; });
+  const autoRoll = !!G.autoRoll;
+  const turnSeconds = G.turnSeconds || 0;
 
   botStop();
   newGame(here.length, G.seed);
   WIN_VP = hostWinVPCustom ? hostWinVP : defaultWinVP(here.length);
-  G.autoRoll = hostAutoRoll;
-  G.turnSeconds = hostTimeout ? 30 : 0;
+  G.autoRoll = autoRoll;
+  G.turnSeconds = turnSeconds;
   G.players.forEach((p, i) => { p.bot = false; p.name = here[i].name; });
   NET.seat = here.findIndex(h => h.uid === NET.uid);
   NET.seats = compact;
