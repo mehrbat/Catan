@@ -4629,8 +4629,7 @@ function tickTurnClock(){
   if (G.phase === 'roll'){
     log(`${nameOf(G.turn)} ran out of time`);
     doRoll();
-    G.turnEndsAt = Date.now() + 10000;      // a moment to spend what they got
-    if (NET.mode === 'host' && NET.ready) netPushTurnDeadline();
+    refreshTurnDeadline();
   } else {
     log(`${nameOf(G.turn)} ran out of time`);
     doEndTurn();
