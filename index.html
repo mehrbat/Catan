@@ -4414,10 +4414,8 @@ function playDev(card){
    8. TURN FLOW
    ============================================================ */
 
-function doRoll(opts = {}){
+function doRoll(){
   if (NET.mode === 'guest'){ sendIntent('roll'); return; }
-  const countActivity = opts.countActivity !== false;
-  if (countActivity) noteTurnActivity();
   const p = cur();
   $('d0').classList.add('rolling'); $('d1').classList.add('rolling');
   renderDie($('d0'), 0); renderDie($('d1'), 0);
@@ -4449,7 +4447,7 @@ function doRoll(opts = {}){
         if (parts.length) log(`${nameOf(i)} collects ${parts.join(', ')}`);
       });
       G.phase = 'main';
-      if (!countActivity) refreshTurnDeadline();
+      refreshTurnDeadline();
 
       // let the cards fly, then update the counts as they land
       const flight = flyProduction(G.lastProduction);
@@ -4622,7 +4620,7 @@ function tickTurnClock(){
   const el = $('turnClock');
   if (!G.turnEndsAt){ if (el) el.textContent = ''; return; }
   if (clockPaused()){
-    const resettablePause = ADMIN_PAUSE || G.awaitRobber >= 0 || !!G.pending || !!G.offer || discardsOutstanding();
+    const resettablePause = ADMIN_PAUSE || G.awaitRobber >= 0 || !!G.pending || discardsOutstanding();
     if (resettablePause) turnWasPaused = true;
     if (el) el.textContent = '';
     return;
@@ -4640,7 +4638,7 @@ function tickTurnClock(){
 
   if (G.phase === 'roll'){
     log(`${nameOf(G.turn)} ran out of time`);
-    doRoll({ countActivity:false });
+    doRoll();
   } else {
     log(`${nameOf(G.turn)} ran out of time`);
     doEndTurn();
