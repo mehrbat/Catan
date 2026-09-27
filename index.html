@@ -4626,9 +4626,10 @@ function tickTurnClock(){
     return;
   }
   if (turnPauseStartedAt){
-    G.turnEndsAt += Date.now() - turnPauseStartedAt;
-    if (NET.mode === 'host' && NET.ready) netPush();
+    const pausedFor = Date.now() - turnPauseStartedAt;
     turnPauseStartedAt = 0;
+    G.turnEndsAt += pausedFor;
+    if (NET.mode === 'host' && NET.ready) netPush();
   }
   const left = Math.max(0, Math.ceil((G.turnEndsAt - Date.now()) / 1000));
   if (el){
