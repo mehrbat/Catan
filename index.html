@@ -950,6 +950,9 @@ body.tucked #railR{ display:none }
           cities, and reach the target first. Everyone shares this one screen.</p>
         <div class="q">HOW MANY AT THE TABLE?</div>
         <div id="seatPick"></div>
+        <div class="q" style="margin-top:14px">VICTORY TARGET</div>
+        <input id="playTarget" type="number" min="3" max="30" inputmode="numeric">
+        <p class="note">Pick how many victory points it takes to win this game.</p>
         <div class="q" style="margin-top:14px">WHO PLAYS THE OTHER SEATS?</div>
         <div id="modePick"></div>
       </div>
@@ -975,6 +978,10 @@ body.tucked #railR{ display:none }
         <div class="secHead">TABLE SIZE</div>
         <div id="hostSeats"></div>
         <p class="note">Empty seats are dropped when you start, so pick generously.</p>
+
+        <div class="secHead" style="margin-top:18px">VICTORY TARGET</div>
+        <input id="hostTarget" type="number" min="3" max="30" inputmode="numeric">
+        <p class="note">Choose the score needed to win before you open the room.</p>
 
         <div class="secHead" style="margin-top:18px">WHO CAN JOIN</div>
         <div id="privacyPick"></div>
@@ -1050,7 +1057,12 @@ const SEATS = [
 ];
 const MAX_SEATS = SEATS.length;
 
-let WIN_VP = BIG_BOARD ? 12 : 10;
+function defaultWinVP(nPlayers){
+  return nPlayers > 4
+    ? Math.max(8, 12 - Math.floor((nPlayers - 4) / 2))
+    : (BIG_BOARD ? 12 : 10);
+}
+let WIN_VP = defaultWinVP(4);
 
 // House rules, kept together so they are easy to find and flip.
 const SNAKE_DRAFT  = false;  // true = official reversed second placement round
@@ -1310,11 +1322,10 @@ function newGame(nPlayers, seed){
     STOCK = { road: Math.max(12, Math.floor(90 / nPlayers)),
               settlement: Math.min(STOCK.settlement, cap + 1),
               city: Math.min(STOCK.city, cap) };
-    WIN_VP = Math.max(8, 12 - Math.floor((nPlayers - 4) / 2));
   } else {
     STOCK = BIG_BOARD ? { road:20, settlement:7, city:5 } : { road:15, settlement:5, city:4 };
-    WIN_VP = BIG_BOARD ? 12 : 10;
   }
+  WIN_VP = defaultWinVP(nPlayers);
 
   G.players = Array.from({length:nPlayers}, (_,i)=>newPlayer(i));
   const supply = big ? 26 : 19;
@@ -1904,7 +1915,7 @@ function serializeState(){
     discardDue: { ...G.discardDue },
     longestOwner: G.longestOwner, longestLen: G.longestLen,
     armyOwner: G.armyOwner, armyN: G.armyN,
-    devPlayed: G.devPlayed, freeRoads: G.freeRoads, winner: G.winner,
+    devPlayed: G.devPlayed, freeRoads: G.freeRoads, winner: G.winner, winVP: WIN_VP,
     bank: { ...G.bank },
     deck: G.devDeck.slice(),
     players: G.players.map(p => ({
@@ -1932,6 +1943,7 @@ function applyState(snap){
     newGame(n, snap.seed);          // rebuild the board to match the host
     rebuilt = true;
   }
+  WIN_VP = snap.winVP ?? defaultWinVP(n);
 
   G.turn = snap.turn || 0;
   G.phase = snap.phase || 'roll';
@@ -3482,7 +3494,7 @@ function missing(p, cost){
 
 /* ---------- the rules, shared by the menu and the in-game sheet ---------- */
 
-function rulesHTML(){
+function rulesHTML(target = WIN_VP){
   const chips = c => Object.entries(c)
     .flatMap(([r,n]) => Array(n).fill(`<s style="background:${COST_DOT[r]}"></s>`)).join('');
   const row = (name, cost, desc) =>
@@ -3491,7 +3503,7 @@ function rulesHTML(){
 
   return `
   <h3>The goal</h3>
-  <p>First to <b>${WIN_VP} victory points</b> wins. A settlement is 1 point and a city 2.
+  <p>First to <b>${target} victory points</b> wins. A settlement is 1 point and a city 2.
      <b>Longest Road</b> (5 or more connected roads) and <b>Largest Army</b> (3 knights
      played) are worth 2 each, and some development cards are a hidden point.</p>
 
@@ -4950,6 +4962,8 @@ function runSetup(){
 // ---- the menu, wired once section 10 has been evaluated ----
 let hostSeatCount = 4;
 let hostPublic = true;
+let hostWinVP = defaultWinVP(hostSeatCount);
+let hostWinVPCustom = false;
 
 // A small helper so every choice row in the menu behaves the same way.
 function pickerRow(host, options, current, onPick){
@@ -4967,6 +4981,20 @@ function pickerRow(host, options, current, onPick){
   }
 }
 
+function setTargetInput(id, value){
+  const el = $(id);
+  if (el) el.value = String(value);
+}
+function syncTargetInput(id, wasDefault, nextDefault){
+  const el = $(id);
+  if (!el) return;
+  const n = Math.round(+el.value);
+  if (!Number.isFinite(n) || n === wasDefault) el.value = String(nextDefault);
+}
+function readTargetInput(id, fallback){
+  return clamp(Math.round(+($(id)?.value || fallback)), 3, 30);
+}
+
 // JOIN and HOST need a name and the auto-roll choice; PLAY and RULES do not.
 function showIdentity(pane){
   const online = pane === 'join' || pane === 'host';
@@ -4976,7 +5004,13 @@ function showIdentity(pane){
 
 function wireOnlineTab(){
   const seatOpts = Array.from({length:MAX_SEATS-1}, (_,i)=>[String(i+2), i+2]);
-  pickerRow($('hostSeats'), seatOpts, ()=>hostSeatCount, v => hostSeatCount = v);
+  pickerRow($('hostSeats'), seatOpts, ()=>hostSeatCount, v => {
+    const wasDefault = defaultWinVP(hostSeatCount);
+    hostSeatCount = v;
+    hostWinVP = defaultWinVP(hostSeatCount);
+    syncTargetInput('hostTarget', wasDefault, hostWinVP);
+  });
+  setTargetInput('hostTarget', hostWinVP);
 
   const note = () => {
     $('privacyNote').textContent = hostPublic
@@ -4996,8 +5030,11 @@ function wireOnlineTab(){
     return $('joinName').value;
   };
   $('hostBtn').onclick = async ()=>{
+    const fallback = defaultWinVP(hostSeatCount);
+    hostWinVP = readTargetInput('hostTarget', fallback);
+    hostWinVPCustom = hostWinVP !== fallback;
     $('hostErr').textContent = 'creating…';
-    try { await netHost(hostSeatCount, grab(), hostPublic); $('hostErr').textContent = ''; }
+    try { await netHost(hostSeatCount, grab(), hostPublic, hostWinVP, hostWinVPCustom); $('hostErr').textContent = ''; }
     catch(e){ console.error('[harbour/net]', e); $('hostErr').textContent = netExplain(e); }
   };
   $('joinBtn').onclick = async ()=>{
@@ -5048,9 +5085,17 @@ function wireOnlineTab(){
 
 let seatCount = 4;
 let vsBots = true;
+let playWinVP = defaultWinVP(seatCount);
+let menuPane = 'play';
 {
   const seatOpts = Array.from({length:MAX_SEATS-1}, (_,i)=>[String(i+2), i+2]);
-  pickerRow($('seatPick'), seatOpts, ()=>seatCount, v => seatCount = v);
+  pickerRow($('seatPick'), seatOpts, ()=>seatCount, v => {
+    const wasDefault = defaultWinVP(seatCount);
+    seatCount = v;
+    playWinVP = defaultWinVP(seatCount);
+    syncTargetInput('playTarget', wasDefault, playWinVP);
+  });
+  setTargetInput('playTarget', playWinVP);
   pickerRow($('modePick'), [['BOTS',true],['PASS & PLAY',false]],
     ()=>vsBots, v => vsBots = v);
 }
@@ -5061,7 +5106,10 @@ for (const t of Array.from(document.querySelectorAll?.('.tab') || [])){
     for (const x of document.querySelectorAll('.tab')) x.classList.toggle('on', x === t);
     for (const x of document.querySelectorAll('.pane'))
       x.classList.toggle('on', x.id === 'pane-' + t.dataset.pane);
-    if (t.dataset.pane === 'how') $('menuRules').innerHTML = rulesHTML();
+    if (t.dataset.pane === 'how') $('menuRules').innerHTML = rulesHTML(
+      readTargetInput(menuPane === 'host' ? 'hostTarget' : 'playTarget',
+        menuPane === 'host' ? hostWinVP : playWinVP));
+    else menuPane = t.dataset.pane;
     showIdentity(t.dataset.pane);
     if (t.dataset.pane === 'join' && netConfigured())
       watchPublic().catch(e => { $('joinErr').textContent = netExplain(e); });
@@ -5069,6 +5117,7 @@ for (const t of Array.from(document.querySelectorAll?.('.tab') || [])){
 }
 
 $('startBtn').onclick = ()=>{
+  playWinVP = readTargetInput('playTarget', defaultWinVP(seatCount));
   NET.mode = 'local'; NET.code = null; NET.seat = 0; NET.public = false;
   chatLines.length = 0; renderChat();
   for (const t of document.querySelectorAll?.('.tabs') || []) t.style.display = '';
@@ -5077,6 +5126,7 @@ $('startBtn').onclick = ()=>{
   elLog.innerHTML = '';
   botStop();
   newGame(seatCount);
+  WIN_VP = playWinVP;
   // seat 0 is always you; the rest are bots unless you asked for pass & play
   for (const p of G.players) p.bot = vsBots && p.id !== 0;
   buildBoardMeshes();
@@ -5181,7 +5231,7 @@ async function netBoot(){
 
 // Online tables are people only. Seats stay open until somebody claims them,
 // and the game starts with exactly whoever turned up.
-async function netHost(seatCount, myName, makePublic){
+async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCount), customWinVP=false){
   const fb = await netBoot();
   NET.mode = 'host';
   NET.seat = 0;
@@ -5189,9 +5239,12 @@ async function netHost(seatCount, myName, makePublic){
   NET.myName = (myName || '').trim() || SEATS[0].name;
   NET.public = !!makePublic;
   NET.roomRef = fb.ref(NET.db, 'rooms/' + NET.code);
+  hostWinVP = clamp(Math.round(+winVP || defaultWinVP(seatCount)), 3, 30);
+  hostWinVPCustom = !!customWinVP;
 
   botStop();
   newGame(seatCount);
+  WIN_VP = hostWinVP;
   G.players.forEach(p => { p.bot = false; });
   G.players[0].name = NET.myName;
 
@@ -5928,6 +5981,7 @@ async function netStartGame(){
 
   botStop();
   newGame(here.length, G.seed);
+  WIN_VP = hostWinVPCustom ? hostWinVP : defaultWinVP(here.length);
   G.players.forEach((p, i) => { p.bot = false; p.name = here[i].name; });
   NET.seat = here.findIndex(h => h.uid === NET.uid);
   NET.seats = compact;
