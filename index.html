@@ -4599,7 +4599,13 @@ function refreshTurnDeadline(){
 function startTurnClock(){
   clearInterval(turnTicker);
   turnTicker = null;
-  if (!G.turnSeconds){ G.turnEndsAt = 0; const el = $('turnClock'); if (el) el.textContent = ''; return; }
+  if (!G.turnSeconds){
+    G.turnEndsAt = 0;
+    if (NET.mode === 'host' && NET.ready) netPushTurnDeadline();
+    const el = $('turnClock');
+    if (el) el.textContent = '';
+    return;
+  }
   refreshTurnDeadline();
   turnTicker = setInterval(tickTurnClock, 250);
 }
@@ -5051,6 +5057,8 @@ function wireOnlineTab(){
 
   const hostAuto = $('hostAutoRoll');
   const hostTmo = $('hostTimeout');
+  hostAutoRoll = !!hostAuto?.checked;
+  hostTimeout = !!hostTmo?.checked;
   if (hostAuto) hostAuto.onchange = ()=>{ hostAutoRoll = !!hostAuto.checked; };
   if (hostTmo) hostTmo.onchange = ()=>{ hostTimeout = !!hostTmo.checked; };
 
@@ -5128,6 +5136,8 @@ let menuPane = 'play';
     ()=>vsBots, v => vsBots = v);
   const playAuto = $('playAutoRoll');
   const playTmo = $('playTimeout');
+  playAutoRoll = !!playAuto?.checked;
+  playTimeout = !!playTmo?.checked;
   if (playAuto) playAuto.onchange = ()=>{ playAutoRoll = !!playAuto.checked; };
   if (playTmo) playTmo.onchange = ()=>{ playTimeout = !!playTmo.checked; };
 }
