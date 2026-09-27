@@ -4622,7 +4622,7 @@ function tickTurnClock(){
   const el = $('turnClock');
   if (!G.turnEndsAt){ if (el) el.textContent = ''; return; }
   if (clockPaused()){
-    const resettablePause = ADMIN_PAUSE || G.awaitRobber >= 0 || !!G.pending || discardsOutstanding();
+    const resettablePause = ADMIN_PAUSE || G.awaitRobber >= 0 || !!G.pending || !!G.offer || discardsOutstanding();
     if (resettablePause) turnWasPaused = true;
     if (el) el.textContent = '';
     return;
@@ -5968,7 +5968,8 @@ function hostBriefing(){
           Everyone else follows what you send them, so if you close this tab the
           table stops. Leave it open until you are done.</p>
         <p style="margin-bottom:9px"><b style="color:var(--ink)">Need to move things along?</b>
-          If you enabled inactivity timeout, idle turns auto-advance. If it is off, type
+          If you enabled inactivity timeout, idle turns are moved along automatically
+          (a missed roll is rolled first, then inactivity can still end the turn). If it is off, type
           <b style="color:var(--ink)">/voteskip</b> in chat to put it to the table. Everyone
           else presses <b style="color:var(--ink)">1</b> for yes or <b style="color:var(--ink)">2</b>
           for no, and a majority carries it.</p>
