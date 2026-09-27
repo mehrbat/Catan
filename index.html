@@ -4586,6 +4586,10 @@ let turnTicker = null, autoRollTimer = null;
 function noteTurnActivity(seat = G.turn){
   if (!iAmHost() || !G.turnSeconds) return;
   if (seat !== G.turn || (G.phase !== 'roll' && G.phase !== 'main')) return;
+  refreshTurnDeadline();
+}
+function refreshTurnDeadline(){
+  if (!iAmHost() || !G.turnSeconds) return;
   G.turnEndsAt = Date.now() + G.turnSeconds * 1000;
 }
 
@@ -4595,7 +4599,7 @@ function startTurnClock(){
   clearInterval(turnTicker);
   turnTicker = null;
   if (!G.turnSeconds){ G.turnEndsAt = 0; const el = $('turnClock'); if (el) el.textContent = ''; return; }
-  if (iAmHost()) G.turnEndsAt = Date.now() + G.turnSeconds * 1000;
+  refreshTurnDeadline();
   turnTicker = setInterval(tickTurnClock, 250);
 }
 function clockPaused(){
