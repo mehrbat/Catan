@@ -4417,7 +4417,6 @@ function playDev(card){
 function doRoll(){
   if (NET.mode === 'guest'){ sendIntent('roll'); return; }
   noteTurnActivity();
-  if (NET.mode === 'host' && NET.ready) netPush();
   const p = cur();
   $('d0').classList.add('rolling'); $('d1').classList.add('rolling');
   renderDie($('d0'), 0); renderDie($('d1'), 0);
