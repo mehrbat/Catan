@@ -1049,8 +1049,8 @@ const COST = {
 const BOARD_R = 3;      // rings of hexes: 2 -> 19 tiles, 3 -> 37 tiles
 const TILE_COUNT = 3*BOARD_R*BOARD_R + 3*BOARD_R + 1;
 const BIG_BOARD  = TILE_COUNT > 25;
-// a wider board needs more pieces and a higher target, or it never fills up
-let STOCK = BIG_BOARD ? { road:20, settlement:7, city:5 } : { road:15, settlement:5, city:4 };
+const BASE_STOCK = BIG_BOARD ? { road:20, settlement:7, city:5 } : { road:15, settlement:5, city:4 };
+let STOCK = { ...BASE_STOCK };
 
 // Four mid-tone hues that stay apart from each other and from the board's
 // greens, tans and greys. Pale yellow and off-white were getting lost, so
@@ -1075,6 +1075,28 @@ function defaultWinVP(nPlayers){
     : (BIG_BOARD ? 12 : 10);
 }
 let WIN_VP = defaultWinVP(4);
+
+function stockForPlayers(nPlayers){
+  if (nPlayers <= 4) return { ...BASE_STOCK };
+  const cap = Math.max(3, Math.floor(26 / nPlayers) + 1);
+  return {
+    road: Math.max(12, Math.floor(90 / nPlayers)),
+    settlement: Math.min(BASE_STOCK.settlement, cap + 1),
+    city: Math.min(BASE_STOCK.city, cap)
+  };
+}
+
+function stockForTarget(nPlayers, targetWinVP){
+  const base = stockForPlayers(nPlayers);
+  const defaultVP = defaultWinVP(nPlayers);
+  if (targetWinVP <= defaultVP) return base;
+  const scale = targetWinVP / defaultVP;
+  return {
+    road: Math.floor(base.road * scale),
+    settlement: Math.floor(base.settlement * scale),
+    city: Math.floor(base.city * scale)
+  };
+}
 
 // House rules, kept together so they are easy to find and flip.
 const SNAKE_DRAFT  = false;  // true = official reversed second placement round
@@ -1316,7 +1338,7 @@ function newPlayer(i){
   };
 }
 
-function newGame(nPlayers, seed){
+function newGame(nPlayers, seed, initialWinVP = defaultWinVP(nPlayers)){
   // Every client generates the identical board from one number, so only the
   // mutable state has to travel over the wire.
   G.seed = (seed === undefined) ? ((Date.now() ^ (Math.random()*0xffffffff)) >>> 0) : (seed >>> 0);
@@ -1325,18 +1347,10 @@ function newGame(nPlayers, seed){
   dealTerrain();
   dealPorts();
 
+  const targetWinVP = clamp(Math.round(+initialWinVP || defaultWinVP(nPlayers)), 3, 30);
   const big = BIG_BOARD;
-  // 96 corners and the distance rule cap the board at roughly 30 buildings,
-  // so trim the per-player stock as the table fills up.
-  if (nPlayers > 4){
-    const cap = Math.max(3, Math.floor(26 / nPlayers) + 1);
-    STOCK = { road: Math.max(12, Math.floor(90 / nPlayers)),
-              settlement: Math.min(STOCK.settlement, cap + 1),
-              city: Math.min(STOCK.city, cap) };
-  } else {
-    STOCK = BIG_BOARD ? { road:20, settlement:7, city:5 } : { road:15, settlement:5, city:4 };
-  }
-  WIN_VP = defaultWinVP(nPlayers);
+  STOCK = stockForTarget(nPlayers, targetWinVP);
+  WIN_VP = targetWinVP;
 
   G.players = Array.from({length:nPlayers}, (_,i)=>newPlayer(i));
   const supply = big ? 26 : 19;
@@ -1953,7 +1967,7 @@ function applyState(snap){
   let rebuilt = false;
   const n = snap.n || (snap.players || []).length;
   if (snap.seed !== G.seed || n !== G.players.length){
-    newGame(n, snap.seed);          // rebuild the board to match the host
+    newGame(n, snap.seed, snap.winVP ?? defaultWinVP(n)); // rebuild the board to match the host
     rebuilt = true;
   }
   WIN_VP = snap.winVP ?? defaultWinVP(n);
@@ -5196,8 +5210,7 @@ $('startBtn').onclick = ()=>{
   closeTray();
   elLog.innerHTML = '';
   botStop();
-  newGame(seatCount);
-  WIN_VP = playWinVP;
+  newGame(seatCount, undefined, playWinVP);
   G.autoRoll = !!playAutoRoll;
   G.turnSeconds = playTimeout ? 30 : 0;
   // seat 0 is always you; the rest are bots unless you asked for pass & play
@@ -5318,8 +5331,7 @@ async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCou
   hostTimeout = !!timeout;
 
   botStop();
-  newGame(seatCount);
-  WIN_VP = hostWinVP;
+  newGame(seatCount, undefined, hostWinVP);
   G.autoRoll = hostAutoRoll;
   G.turnSeconds = hostTimeout ? 30 : 0;
   G.players.forEach(p => { p.bot = false; });
@@ -6072,8 +6084,7 @@ async function netStartGame(){
   const turnSeconds = G.turnSeconds || 0;
 
   botStop();
-  newGame(here.length, G.seed);
-  WIN_VP = hostWinVPCustom ? hostWinVP : defaultWinVP(here.length);
+  newGame(here.length, G.seed, hostWinVPCustom ? hostWinVP : defaultWinVP(here.length));
   G.autoRoll = autoRoll;
   G.turnSeconds = turnSeconds;
   G.players.forEach((p, i) => { p.bot = false; p.name = here[i].name; });
