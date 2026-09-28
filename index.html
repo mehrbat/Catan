@@ -4676,8 +4676,10 @@ function tickTurnClock(){
 // The host owns the flow, so auto-roll is applied there for every human seat.
 function maybeAutoRoll(){
   clearTimeout(autoRollTimer);
-  if (!G.autoRoll || G.phase !== 'roll' || mode || !iAmHost()) return;
-  autoRollTimer = setTimeout(()=>{ if (G.phase === 'roll' && !mode) doRoll(); }, 900);
+  if (!G.autoRoll || G.phase !== 'roll' || mode || !iAmHost() || G.awaitRobber >= 0) return;
+  autoRollTimer = setTimeout(()=>{
+    if (G.phase === 'roll' && !mode && G.awaitRobber < 0) doRoll();
+  }, 900);
 }
 
 function beginTurn(){
