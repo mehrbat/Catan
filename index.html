@@ -3971,6 +3971,7 @@ addEventListener('pointerup', e => {
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinchDist = 0;
   if (!p) return;
+  if (!(e.target instanceof Node) || !canvasEl.contains(e.target)) return;
   // fingers wobble, so a tap gets more slack than a click
   const slack = IS_TOUCH ? 16 : 5;
   // a pinch releases one finger at a time; neither release is a tap
