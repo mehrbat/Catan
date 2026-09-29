@@ -3971,6 +3971,7 @@ addEventListener('pointerup', e => {
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinchDist = 0;
   if (!p) return;
+  if (!(e.target instanceof Node) || !canvasEl.contains(e.target)) return;
   // fingers wobble, so a tap gets more slack than a click
   const slack = IS_TOUCH ? 16 : 5;
   // a pinch releases one finger at a time; neither release is a tap
@@ -4676,8 +4677,10 @@ function tickTurnClock(){
 // The host owns the flow, so auto-roll is applied there for every human seat.
 function maybeAutoRoll(){
   clearTimeout(autoRollTimer);
-  if (!G.autoRoll || G.phase !== 'roll' || mode || !iAmHost()) return;
-  autoRollTimer = setTimeout(()=>{ if (G.phase === 'roll' && !mode) doRoll(); }, 900);
+  if (!G.autoRoll || G.phase !== 'roll' || mode || !iAmHost() || G.awaitRobber >= 0) return;
+  autoRollTimer = setTimeout(()=>{
+    if (G.phase === 'roll' && !mode && G.awaitRobber < 0) doRoll();
+  }, 900);
 }
 
 function beginTurn(){
