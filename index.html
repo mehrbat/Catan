@@ -513,10 +513,17 @@ body.tucked #railR{ display:none }
 #voteBar .vt button.no{background:#7a3a2c;color:var(--parch);border-color:#4a1f16}
 
 #toasts{
-  position:absolute;left:50%;top:calc(150px + var(--safeT));transform:translateX(-50%);
+  position:absolute;left:50%;top:calc(150px + var(--safeT));
+  transform:translate(calc(-50% + var(--toastDX,0px)), var(--toastDY,0px));
   display:flex;flex-direction:column;align-items:center;gap:6px;
   pointer-events:none;width:max-content;max-width:70vw;
 }
+/* Notifications float over the board, which is annoying to reach past on
+   phones and other small/touch screens — so there they become draggable. */
+body.movableToasts #toasts{
+  pointer-events:auto;touch-action:none;cursor:grab;
+}
+body.movableToasts #toasts.dragging{ cursor:grabbing }
 .toast{
   display:flex;align-items:center;gap:9px;padding:8px 15px 9px;border-radius:3px;
   background:linear-gradient(180deg,rgba(255,255,255,.45),rgba(255,255,255,0) 46%),var(--parch);
@@ -2713,7 +2720,7 @@ const gPieces = new THREE.Group();
 const gNodes  = new THREE.Group();
 scene.add(gBoard, gPieces, gNodes);
 
-let vertexNodes = [], edgeNodes = [], tileMeshes = [], robberMesh = null, robberRing = null;
+let vertexNodes = [], edgeNodes = [], tileMeshes = [], portMeshes = [], robberMesh = null, robberRing = null;
 
 // A ring that follows the hex under the pointer while the robber is being moved.
 // Hex tiles use a material array so they cannot take a highlight material, which
@@ -2744,7 +2751,7 @@ function clearGroup(g){
 
 function buildBoardMeshes(){
   clearGroup(gBoard); clearGroup(gPieces); clearGroup(gNodes);
-  vertexNodes = []; edgeNodes = []; tileMeshes = [];
+  vertexNodes = []; edgeNodes = []; tileMeshes = []; portMeshes = [];
 
   const hexGeo = new THREE.CylinderGeometry(R*0.982, R, HEX_H, 6);
 
@@ -2791,7 +2798,9 @@ function buildBoardMeshes(){
     sign.position.set(px + ox*reach, TOP - 0.02, pz + oz*reach);
     sign.rotation.y = Math.atan2(-ox, -oz);   // "give" edge nearest the board
     sign.castShadow = true; sign.receiveShadow = true;
+    sign.userData = { kind:'port', id:p.id };
     gBoard.add(sign);
+    portMeshes[p.id] = sign;
 
     // Ropes to the two corners this dock serves, so which spots earn it is obvious.
     for (const vid of p.verts){
@@ -3287,12 +3296,14 @@ const TERRAIN_NAME = {
 
 const elBubble = $('bubble');
 let bubbleTile = -1;
+let bubbleKey = null;
 
 function showTileBubble(tileId, sx, sy){
   const t = tiles[tileId];
   if (!t){ hideBubble(); return; }
-  if (tileId !== bubbleTile){
-    bubbleTile = tileId;
+  const key = 'tile:' + tileId;
+  if (key !== bubbleKey){
+    bubbleKey = key; bubbleTile = tileId;
     const odds = t.number ? 6 - Math.abs(7 - t.number) : 0;
     const red = t.number === 6 || t.number === 8;
     const mine = t.verts.filter(v => verts[v].owner === viewSeat()).length;
@@ -3316,8 +3327,34 @@ function showTileBubble(tileId, sx, sy){
   elBubble.style.left = clamp(sx - 24, 8, innerWidth - w - 8) + 'px';
   elBubble.style.top  = clamp(sy - h - 16, 8, innerHeight - h - 8) + 'px';
 }
+
+// The dock's own bubble spells out the deal (what you hand over, what you
+// get back), same as the plaque on the water but readable without squinting.
+function showPortBubble(portId, sx, sy){
+  const p = ports[portId];
+  if (!p){ hideBubble(); return; }
+  const key = 'port:' + portId;
+  if (key !== bubbleKey){
+    bubbleKey = key; bubbleTile = -1;
+    const generic = p.kind === '3:1';
+    const mine = p.verts.filter(v => verts[v].owner === viewSeat()).length;
+
+    elBubble.innerHTML = `
+      <div class="bt">
+        <i style="background:${generic ? '#8a7550' : '#' + RES_HEX[p.kind].toString(16).padStart(6,'0')}"></i>
+        <b>${generic ? 'Trading dock' : RES_LABEL[p.kind] + ' dock'}</b>
+      </div>
+      <div class="bo">${generic ? 'give any 3 matching cards' : `give 2 ${RES_LABEL[p.kind].toLowerCase()}`} · get 1 of anything</div>
+      <div class="bu">Build a settlement or city on this dock to use it.</div>
+      ${mine ? `<div class="bo">you have ${mine} building${mine>1?'s':''} on it</div>` : ''}`;
+  }
+  elBubble.classList.remove('hide');
+  const w = elBubble.offsetWidth || 220, h = elBubble.offsetHeight || 90;
+  elBubble.style.left = clamp(sx - 24, 8, innerWidth - w - 8) + 'px';
+  elBubble.style.top  = clamp(sy - h - 16, 8, innerHeight - h - 8) + 'px';
+}
 function hideBubble(){
-  bubbleTile = -1;
+  bubbleTile = -1; bubbleKey = null;
   elBubble.classList.add('hide');
 }
 
@@ -3899,6 +3936,34 @@ let hover = null;
 const IS_TOUCH = (typeof matchMedia === 'function' && matchMedia('(hover: none)').matches)
                  || (typeof window !== 'undefined' && 'ontouchstart' in window);
 
+// Toast notifications sit dead centre over the board — fine with a mouse, but
+// on phones (and anything else driven by touch, or just a small window) they
+// block taps on whatever's underneath, so there they can be dragged aside.
+function updateMovableToasts(){
+  document.body.classList.toggle('movableToasts', IS_TOUCH || innerWidth <= 1000);
+}
+updateMovableToasts();
+addEventListener('resize', updateMovableToasts);
+(function initToastDrag(){
+  let toastDX = 0, toastDY = 0, dragStart = null;
+  elToasts.addEventListener('pointerdown', e => {
+    if (!document.body.classList.contains('movableToasts')) return;
+    dragStart = { x:e.clientX - toastDX, y:e.clientY - toastDY };
+    elToasts.classList.add('dragging');
+    elToasts.setPointerCapture?.(e.pointerId);
+  });
+  elToasts.addEventListener('pointermove', e => {
+    if (!dragStart) return;
+    toastDX = e.clientX - dragStart.x;
+    toastDY = e.clientY - dragStart.y;
+    elToasts.style.setProperty('--toastDX', toastDX + 'px');
+    elToasts.style.setProperty('--toastDY', toastDY + 'px');
+  });
+  const stopDrag = () => { dragStart = null; elToasts.classList.remove('dragging'); };
+  elToasts.addEventListener('pointerup', stopDrag);
+  elToasts.addEventListener('pointercancel', stopDrag);
+})();
+
 // One finger turns the table, two fingers pinch to zoom, a finger that barely
 // moved is a tap. Tracking pointers by id is what makes all three coexist.
 const pointers = new Map();
@@ -3940,11 +4005,13 @@ canvasEl.addEventListener('pointerdown', e => {
 addEventListener('pointermove', e => {
   if (!IS_TOUCH){
     setPtr(e.clientX, e.clientY);
-    // an overview of whatever hex is under the cursor, unless placing a piece
-    if (!mode && !pointers.size && tileMeshes.length){
+    // an overview of whatever hex or dock is under the cursor, unless placing a piece
+    if (!mode && !pointers.size && (tileMeshes.length || portMeshes.length)){
       ray.setFromCamera(ptr, cam);
-      const hit = ray.intersectObjects(tileMeshes.filter(Boolean), false)[0];
-      if (hit) showTileBubble(hit.object.userData.id, e.clientX, e.clientY);
+      const hit = ray.intersectObjects([...tileMeshes, ...portMeshes].filter(Boolean), false)[0];
+      if (hit && hit.object.userData.kind === 'port')
+        showPortBubble(hit.object.userData.id, e.clientX, e.clientY);
+      else if (hit) showTileBubble(hit.object.userData.id, e.clientX, e.clientY);
       else hideBubble();
     } else hideBubble();
   }
@@ -3977,12 +4044,14 @@ addEventListener('pointerup', e => {
   // a pinch releases one finger at a time; neither release is a tap
   if (p.travel <= slack && pointers.size === 0 && !p.multi){
     setPtr(e.clientX, e.clientY);
-    if (IS_TOUCH && !mode && tileMeshes.length){
-      // no hover on a touch screen, so a tap on a hex explains it instead
+    if (IS_TOUCH && !mode && (tileMeshes.length || portMeshes.length)){
+      // no hover on a touch screen, so a tap on a hex or dock explains it instead
       ray.setFromCamera(ptr, cam);
-      const hit = ray.intersectObjects(tileMeshes.filter(Boolean), false)[0];
+      const hit = ray.intersectObjects([...tileMeshes, ...portMeshes].filter(Boolean), false)[0];
       if (hit){
-        showTileBubble(hit.object.userData.id, e.clientX, e.clientY);
+        if (hit.object.userData.kind === 'port')
+          showPortBubble(hit.object.userData.id, e.clientX, e.clientY);
+        else showTileBubble(hit.object.userData.id, e.clientX, e.clientY);
         setTimeout(hideBubble, 3200);
       } else hideBubble();
     }
