@@ -4560,7 +4560,7 @@ function beginRobber(pid){
   // swallow the roll entirely, so remember where we came from.
   G.robberReturn = G.phase === 'roll' ? 'roll' : 'main';
   if (isOnline() && pid !== NET.seat && !isBot(pid)){ renderAll(); return; }
-  if (!isBot(pid)){ armPlacement('robber', { pid }); return; }
+  if (!isBot(pid)){ armPlacement('robber', { pid, forced:true }); return; }
   botSoon(()=>{
     const tid = botRobberTile(pid);
     log(`${nameOf(pid)} moves the robber`);
