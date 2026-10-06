@@ -1638,6 +1638,11 @@ function payDiscard(seat, bag){
   return paid;
 }
 const discardsOutstanding = () => Object.keys(G.discardDue || {}).length > 0;
+// Set while the dice tumble, and on a seven until the robber has been handed
+// out — a gap of about a second where nothing in G says a robber move is owed.
+let diceSettling = false;
+const robberOwed = () => diceSettling || G.awaitRobber >= 0 || discardsOutstanding()
+                      || (G.pending && G.pending.kind === 'steal');
 
 /* ---- trading ---- */
 
@@ -1862,6 +1867,9 @@ function buyDev(pid){
 function canPlayDev(pid, card){
   const p = G.players[pid];
   if (G.devPlayed || G.phase === 'over') return false;
+  // a seven is settled first: a knight played over a pending robber move or an
+  // unpaid discard was spent without ever getting a robber move of its own
+  if (robberOwed()) return false;
   // a card bought this turn is not yet in play
   const held = p.devs.filter(c=>c===card).length;
   const boughtNow = p.boughtThisTurn.filter(c=>c===card).length;
@@ -3686,7 +3694,9 @@ function actionSpecs(){
     return list;
   }
 
-  const blocked = free ? 'Place your free roads first.' : null;
+  // arming a build mode would silently replace the robber prompt, and nothing re-arms it
+  const blocked = free ? 'Place your free roads first.'
+                : mode?.type === 'robber' ? 'Move the robber first.' : null;
 
   list.push({
     label: free ? `FREE ROAD ×${G.freeRoads}` : 'ROAD',
@@ -3734,6 +3744,7 @@ function actionSpecs(){
     why: blocked
        || (G.devPlayed ? 'You have already played a card this turn.'
         : !p.devs.length ? 'You are not holding any playable cards.'
+        : robberOwed() ? 'Settle the seven first — discards and the robber move.'
         : !playable.length ? 'Cards bought this turn cannot be played until your next turn.'
         : null),
     what: playable.length
@@ -4394,7 +4405,8 @@ function openDevTray(){
                          line-height:1.45;margin-top:2px">${DEV_HINT[card]}</span>
           </span>
           <span style="font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;opacity:.85">
-            ${G.devPlayed ? 'ONE PER TURN' : ready ? 'PLAY →' : 'BOUGHT THIS TURN'}</span>`;
+            ${G.devPlayed ? 'ONE PER TURN' : ready ? 'PLAY →'
+              : robberOwed() ? 'SETTLE THE 7 FIRST' : 'BOUGHT THIS TURN'}</span>`;
         if (ready) row.onclick = ()=>{ closeTray(); playDev(card); };
         box.appendChild(row);
       }
@@ -4515,9 +4527,11 @@ function doRoll(countActivity = true){
   $('d0').classList.add('rolling'); $('d1').classList.add('rolling');
   renderDie($('d0'), 0); renderDie($('d1'), 0);
   $('diceSum').textContent = '';
+  diceSettling = true;
   setTimeout(()=>{
     $('d0').classList.remove('rolling'); $('d1').classList.remove('rolling');
     const roll = rollDice();
+    if (roll !== 7) diceSettling = false;
     G.rollSeq = (G.rollSeq || 0) + 1;
     G.rollBy = p.id;
     renderDie($('d0'), G.dice[0]); renderDie($('d1'), G.dice[1]);
@@ -4531,6 +4545,7 @@ function doRoll(countActivity = true){
       billDiscards();
       botDiscardAll();                 // bots settle up at once
       setTimeout(()=>{
+        diceSettling = false;          // from here awaitRobber / discardDue say what is owed
         renderAll();                   // everyone who owes gets their own tray
         if (!discardsOutstanding()) afterDiscards();
       }, 900);
