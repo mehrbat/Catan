@@ -4532,7 +4532,7 @@ function doRoll(countActivity = true){
       botDiscardAll();                 // bots settle up at once
       setTimeout(()=>{
         renderAll();                   // everyone who owes gets their own tray
-        afterDiscards();
+        if (!discardsOutstanding()) afterDiscards();
       }, 900);
     } else {
       const gains = produce(roll);
@@ -4554,6 +4554,7 @@ function doRoll(countActivity = true){
 
 // Either hand the human the robber, or let the bot pick for itself.
 function beginRobber(pid){
+  if (discardsOutstanding()) return;
   G.awaitRobber = pid;          // recorded in state so that seat can act on it
   // A knight can be played before rolling. Forcing 'main' afterwards used to
   // swallow the roll entirely, so remember where we came from.
