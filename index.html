@@ -4118,6 +4118,7 @@ function onClick(){
   const ud = hit.object.userData;
 
   if (mode.type === 'robber' && ud.kind === 'tile'){
+    if (G.awaitRobber !== mode.pid || discardsOutstanding()){ cancelMode(); return; }
     if (ud.id === G.robber) return;
     if (NET.mode === 'guest'){
       sendIntent('robber', { id: ud.id });
@@ -4522,6 +4523,9 @@ function playDev(card){
 
 function doRoll(countActivity = true){
   if (NET.mode === 'guest'){ sendIntent('roll'); return; }
+  // a second click, the auto-roll timer or the turn clock can land while the
+  // dice are still tumbling, when the phase still reads 'roll'
+  if (diceSettling) return;
   if (countActivity) noteTurnActivity();
   const p = cur();
   $('d0').classList.add('rolling'); $('d1').classList.add('rolling');
@@ -4584,6 +4588,9 @@ function beginRobber(pid){
 }
 
 function resolveRobber(tileId, pid){
+  // only the seat that owes a robber move gets one, and never before the seven's
+  // discards are paid — a stale prompt or a late intent must not rob anybody
+  if (G.awaitRobber !== pid || discardsOutstanding()) return;
   G.awaitRobber = -1;
   G.robber = tileId;
   reachFor(pid, tiles[tileId].x, tiles[tileId].z, () => moveRobberMesh(tileId));
@@ -5613,7 +5620,7 @@ function hostApplyIntent(it){
 
   switch (it.type){
     case 'roll':
-      if (G.phase === 'roll') doRoll();
+      if (G.phase === 'roll' && !robberOwed()) doRoll();
       break;
     case 'road': {
       const inSetup = G.phase === 'setup';
@@ -5680,7 +5687,7 @@ function hostApplyIntent(it){
       break;
     }
     case 'robber':
-      if (it.id !== G.robber) resolveRobber(it.id, seat);
+      if (tiles[it.id] && it.id !== G.robber) resolveRobber(it.id, seat);
       break;
     case 'discard': {
       // only ever settles that seat's own bill
@@ -5889,6 +5896,11 @@ function guestTick(){
     $('diceSum').textContent = G.lastRoll;
     showRoll(G.rollBy, G.dice[0], G.dice[1]);
   }
+
+  // A snapshot sent before the host saw our robber click re-arms the prompt;
+  // drop it once the host says no robber move is owed by us
+  if (mode && mode.type === 'robber' && (G.awaitRobber !== NET.seat || discardsOutstanding()))
+    cancelMode();
 
   if (discardsOutstanding()) return;   // settle the seven before anything else
   showPendingIfMine();
