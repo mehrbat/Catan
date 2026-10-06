@@ -964,6 +964,10 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
           <input type="checkbox" id="playTimeout">
           <span>End turns after 30s of inactivity</span>
         </label>
+        <label class="optRow">
+          <input type="checkbox" id="playUnlimited">
+          <span>Unlimited development cards — the deck never runs out</span>
+        </label>
         <div class="q" style="margin-top:14px">WHO PLAYS THE OTHER SEATS?</div>
         <div id="modePick"></div>
       </div>
@@ -1000,6 +1004,10 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
         <label class="optRow">
           <input type="checkbox" id="hostTimeout">
           <span>End turns after 30s of inactivity</span>
+        </label>
+        <label class="optRow">
+          <input type="checkbox" id="hostUnlimited">
+          <span>Unlimited development cards — the deck never runs out</span>
         </label>
 
         <div class="secHead" style="margin-top:18px">WHO CAN JOIN</div>
@@ -1104,6 +1112,21 @@ function stockForTarget(nPlayers, targetWinVP){
     city: Math.floor(base.city * scale)
   };
 }
+
+// The development deck is sized for a 12-point game. Longer games get
+// proportionally more cards so the deck does not run dry halfway through.
+// Resource cards are never limited: the bank always pays in full.
+const DECK_BASE_VP = 12;
+function makeDevDeck(targetWinVP = WIN_VP){
+  const mix = BIG_BOARD
+    ? { knight:20, victory:6, roadBuilding:3, yearOfPlenty:3, monopoly:3 }
+    : { knight:14, victory:5, roadBuilding:2, yearOfPlenty:2, monopoly:2 };
+  // an unlimited deck is just the standard deck, reshuffled whenever it runs out
+  const scale = G.unlimitedDevs ? 1 : Math.max(1, targetWinVP / DECK_BASE_VP);
+  return shuffle(Object.entries(mix)
+    .flatMap(([card, n]) => Array(Math.round(n * scale)).fill(card)));
+}
+const deckLeft = () => G.unlimitedDevs ? 'unlimited' : `${G.devDeck.length} left`;
 
 // House rules, kept together so they are easy to find and flip.
 const SNAKE_DRAFT  = false;  // true = official reversed second placement round
@@ -1311,7 +1334,7 @@ function dealPorts(){
    ============================================================ */
 
 const G = {
-  players: [], bank:{}, devDeck: [], turn: 0,
+  players: [], devDeck: [], turn: 0,
   phase: 'idle',        // setup | roll | main | over
   setupRound: 0, setupOrder: [], setupIdx: 0, setupVertex: -1,
   robber: -1, dice: [0,0], lastRoll: 0,
@@ -1331,6 +1354,7 @@ const G = {
   turnEndsAt: 0,              // host's clock; everyone counts down against it
   autoRoll: false,            // host-selected game option
   turnSeconds: 0,             // host-selected inactivity timeout (0 = off)
+  unlimitedDevs: false,       // host-selected: the development deck never runs out
   forceRoll: 0,               // debug panel: pin the next dice total
   vote: null                  // { target, yes:[], no:[], ends } while a skip vote runs
 };
@@ -1345,7 +1369,7 @@ function newPlayer(i){
   };
 }
 
-function newGame(nPlayers, seed, initialWinVP = defaultWinVP(nPlayers)){
+function newGame(nPlayers, seed, initialWinVP = defaultWinVP(nPlayers), unlimitedDevs = false){
   // Every client generates the identical board from one number, so only the
   // mutable state has to travel over the wire.
   G.seed = (seed === undefined) ? ((Date.now() ^ (Math.random()*0xffffffff)) >>> 0) : (seed >>> 0);
@@ -1355,22 +1379,12 @@ function newGame(nPlayers, seed, initialWinVP = defaultWinVP(nPlayers)){
   dealPorts();
 
   const targetWinVP = clamp(Math.round(+initialWinVP || defaultWinVP(nPlayers)), 3, 30);
-  const big = BIG_BOARD;
   STOCK = stockForTarget(nPlayers, targetWinVP);
   WIN_VP = targetWinVP;
 
   G.players = Array.from({length:nPlayers}, (_,i)=>newPlayer(i));
-  const supply = big ? 26 : 19;
-  G.bank = { lumber:supply, brick:supply, wool:supply, grain:supply, ore:supply };
-  G.devDeck = shuffle(big ? [
-    ...Array(20).fill('knight'), ...Array(6).fill('victory'),
-    ...Array(3).fill('roadBuilding'), ...Array(3).fill('yearOfPlenty'),
-    ...Array(3).fill('monopoly')
-  ] : [
-    ...Array(14).fill('knight'), ...Array(5).fill('victory'),
-    ...Array(2).fill('roadBuilding'), ...Array(2).fill('yearOfPlenty'),
-    ...Array(2).fill('monopoly')
-  ]);
+  G.unlimitedDevs = !!unlimitedDevs;
+  G.devDeck = makeDevDeck(targetWinVP);
   G.robber = tiles.find(t => t.terrain === 'desert').id;
   G.turn = 0; G.winner = -1; G.dice=[0,0]; G.lastRoll = 0;
   G.longestOwner = -1; G.longestLen = 0;
@@ -1411,12 +1425,12 @@ function canAfford(p, cost){
   return Object.entries(cost).every(([r,n]) => p.res[r] >= n);
 }
 function pay(p, cost){
-  for (const [r,n] of Object.entries(cost)){ p.res[r]-=n; G.bank[r]+=n; }
+  for (const [r,n] of Object.entries(cost)) p.res[r] -= n;
 }
+// The bank has no limit, so it always pays in full.
 function give(p, res, n){
-  const take = Math.min(n, G.bank[res]);
-  p.res[res] += take; G.bank[res] -= take;
-  return take;
+  p.res[res] += n;
+  return n;
 }
 
 /* ---- settlements ---- */
@@ -1557,7 +1571,6 @@ function checkWin(){
 
 function produce(roll){
   const gains = G.players.map(()=>({}));
-  const want = { lumber:0, brick:0, wool:0, grain:0, ore:0 };
   const detail = [];        // which tile paid whom, for the collect animation
 
   for (const t of tiles){
@@ -1567,18 +1580,7 @@ function produce(roll){
       if (!v.building) continue;
       const n = v.building === 'city' ? 2 : 1;
       gains[v.owner][t.res] = (gains[v.owner][t.res] || 0) + n;
-      want[t.res] += n;
       detail.push({ pid:v.owner, res:t.res, n, tile:t.id, vid });
-    }
-  }
-  // Official shortage rule: if the bank can't cover a resource for everyone
-  // owed it, nobody receives that resource — unless exactly one player is owed.
-  for (const res of RES){
-    if (want[res] <= G.bank[res]) continue;
-    const owed = gains.filter(g => g[res]).length;
-    if (owed > 1){
-      for (const g of gains) delete g[res];
-      for (let i=detail.length-1;i>=0;i--) if (detail[i].res === res) detail.splice(i,1);
     }
   }
   G.lastProduction = detail;
@@ -1631,7 +1633,7 @@ function payDiscard(seat, bag){
   for (const r of RES){
     const take = Math.min(bag[r] || 0, p.res[r], owed);
     if (take <= 0) continue;
-    p.res[r] -= take; G.bank[r] += take; owed -= take; paid += take;
+    p.res[r] -= take; owed -= take; paid += take;
   }
   if (owed <= 0) delete G.discardDue[seat];
   else G.discardDue[seat] = owed;
@@ -1652,11 +1654,11 @@ function tradeRate(p, res){
   return 4;
 }
 function canBankTrade(p, give_, want){
-  return give_ !== want && p.res[give_] >= tradeRate(p, give_) && G.bank[want] > 0;
+  return give_ !== want && p.res[give_] >= tradeRate(p, give_);
 }
 function bankTrade(p, give_, want){
   const rate = tradeRate(p, give_);
-  p.res[give_] -= rate; G.bank[give_] += rate;
+  p.res[give_] -= rate;
   give(p, want, 1);
   return rate;
 }
@@ -1860,6 +1862,7 @@ function buyDev(pid){
   if (!G.devDeck.length || !canAfford(p, COST.dev)) return null;
   pay(p, COST.dev);
   const card = G.devDeck.pop();
+  if (G.unlimitedDevs && !G.devDeck.length) G.devDeck = makeDevDeck();
   if (card === 'victory'){ p.vpCards++; }
   else { p.devs.push(card); p.boughtThisTurn.push(card); }
   return card;
@@ -1951,14 +1954,13 @@ function serializeState(){
                        get:{ ...G.offer.get }, replies:{ ...G.offer.replies } } : null,
     rollSeq: G.rollSeq, rollBy: G.rollBy,
     awaitRobber: G.awaitRobber, robberReturn: G.robberReturn, turnEndsAt: G.turnEndsAt,
-    autoRoll: G.autoRoll, turnSeconds: G.turnSeconds,
+    autoRoll: G.autoRoll, turnSeconds: G.turnSeconds, unlimitedDevs: !!G.unlimitedDevs,
     vote: G.vote ? { target:G.vote.target, yes:G.vote.yes.slice(),
                      no:G.vote.no.slice(), ends:G.vote.ends } : null,
     discardDue: { ...G.discardDue },
     longestOwner: G.longestOwner, longestLen: G.longestLen,
     armyOwner: G.armyOwner, armyN: G.armyN,
     devPlayed: G.devPlayed, freeRoads: G.freeRoads, winner: G.winner, winVP: WIN_VP,
-    bank: { ...G.bank },
     deck: G.devDeck.slice(),
     players: G.players.map(p => ({
       id:p.id, bot:p.bot, name:p.name, res:{ ...p.res },
@@ -1982,7 +1984,7 @@ function applyState(snap){
   let rebuilt = false;
   const n = snap.n || (snap.players || []).length;
   if (snap.seed !== G.seed || n !== G.players.length){
-    newGame(n, snap.seed, snap.winVP ?? defaultWinVP(n)); // rebuild the board to match the host
+    newGame(n, snap.seed, snap.winVP ?? defaultWinVP(n), !!snap.unlimitedDevs); // rebuild the board to match the host
     rebuilt = true;
   }
   WIN_VP = snap.winVP ?? defaultWinVP(n);
@@ -2009,6 +2011,7 @@ function applyState(snap){
   G.robberReturn = snap.robberReturn || 'main';
   G.autoRoll = !!snap.autoRoll;
   G.turnSeconds = snap.turnSeconds || 0;
+  G.unlimitedDevs = !!snap.unlimitedDevs;
   G.vote = snap.vote
     ? { target:snap.vote.target, yes:(snap.vote.yes||[]).slice(),
         no:(snap.vote.no||[]).slice(), ends:snap.vote.ends || 0 }
@@ -2016,7 +2019,6 @@ function applyState(snap){
   G.discardDue = { ...(snap.discardDue || {}) };
   G.turnEndsAt = snap.turnEndsAt || 0;
 
-  G.bank = { lumber:0, brick:0, wool:0, grain:0, ore:0, ...(snap.bank || {}) };
   G.devDeck = (snap.deck || []).slice();
 
   G.pending = snap.pending
@@ -2296,7 +2298,7 @@ function botMonopolyRes(pid){
 
 function botYearOfPlenty(pid){
   const need = botNeed(pid);
-  const picks = RES.filter(r => G.bank[r] > 0).sort((a, b) => need[b] - need[a]);
+  const picks = RES.slice().sort((a, b) => need[b] - need[a]);
   return [picks[0] || 'lumber', picks[1] || picks[0] || 'lumber'];
 }
 
@@ -3735,7 +3737,7 @@ function actionSpecs(){
     why: blocked
        || (!G.devDeck.length ? 'The development deck is empty.'
         : !canAfford(p, COST.dev) ? missing(p, COST.dev) : null),
-    what:`Draw a random development card. ${G.devDeck.length} left in the deck.`,
+    what:`Draw a random development card. ${G.unlimitedDevs ? 'The deck never runs out.' : `${G.devDeck.length} left in the deck.`}`,
     on:doBuyDev });
 
   const playable = p.devs.filter(c => canPlayDev(p.id, c));
@@ -4341,16 +4343,15 @@ function openTradeTray(){
         if (!able) c.style.opacity = .32;
         box.appendChild(c);
       } else {
-        const able = r !== give_ && G.bank[r] > 0;
-        const c = resCard(r, G.bank[r], able ? ()=>{
+        const able = r !== give_;
+        const c = resCard(r, '', able ? ()=>{
           if (NET.mode === 'guest'){ sendIntent('bankTrade', { give:give_, want:r }); closeTray(); return; }
           const rate = bankTrade(p, give_, r);
           announce(p.id, `traded with the bank`,
             `${rate} ${RES_LABEL[give_].toLowerCase()} → 1 ${RES_LABEL[r].toLowerCase()}`, false);
           closeTray(); renderAll();
         } : null, false);
-        c.title = able ? `${G.bank[r]} left in the bank`
-                       : (r === give_ ? 'Pick a different resource' : 'The bank has none left');
+        c.title = able ? `Take 1 ${RES_LABEL[r].toLowerCase()}` : 'Pick a different resource';
         if (!able) c.style.opacity = .32;
         box.appendChild(c);
       }
@@ -4377,7 +4378,7 @@ function openDevTray(){
   for (const c of p.devs) counts[c] = (counts[c]||0) + 1;
 
   openTray('Your development cards',
-    `${G.devDeck.length} still in the deck · one card per turn`,
+    `${G.unlimitedDevs ? 'unlimited deck' : `${G.devDeck.length} still in the deck`} · one card per turn`,
     box => {
       box.style.flexDirection = 'column';
       box.style.alignItems = 'stretch';
@@ -4440,8 +4441,8 @@ function playDev(card){
     const build = box => {
       box.innerHTML = '';
       for (const r of RES){
-        const c = resCard(r, G.bank[r], ()=>{
-          if (picked.length < 2 && G.bank[r] > 0){ picked.push(r); }
+        const c = resCard(r, '', ()=>{
+          if (picked.length < 2){ picked.push(r); }
           $('trayS').textContent = `${picked.length} of 2 chosen`;
           build(box); refreshTray();
         }, picked.includes(r));
@@ -4628,7 +4629,7 @@ function doBuyDev(){
   if (!card) return;
   noteTurnActivity();
   announce(p.id, 'bought a development card',
-    `${G.devDeck.length} left`, false);
+    deckLeft(), false);
   if (checkWin()) return announceWin();
   renderAll();
 }
@@ -4837,7 +4838,7 @@ function botStep(){
     }
     case 'dev': {
       const card = buyDev(pid);
-      if (card) announce(pid, 'bought a development card', `${G.devDeck.length} left`, false);
+      if (card) announce(pid, 'bought a development card', deckLeft(), false);
       break;
     }
     case 'bankTrade': {
@@ -5133,6 +5134,7 @@ let hostWinVP = defaultWinVP(hostSeatCount);
 let hostWinVPCustom = false;
 let hostAutoRoll = false;
 let hostTimeout = false;
+let hostUnlimited = false;
 
 // A small helper so every choice row in the menu behaves the same way.
 function pickerRow(host, options, current, onPick){
@@ -5199,6 +5201,11 @@ function wireOnlineTab(){
   if (hostTmo) hostTmo.checked = hostTimeout;
   if (hostAuto) hostAuto.onchange = ()=>{ hostAutoRoll = !!hostAuto.checked; };
   if (hostTmo) hostTmo.onchange = ()=>{ hostTimeout = !!hostTmo.checked; };
+  const hostUnl = $('hostUnlimited');
+  if (hostUnl){
+    hostUnl.checked = hostUnlimited;
+    hostUnl.onchange = ()=>{ hostUnlimited = !!hostUnl.checked; };
+  }
 
   const grab = () => $('joinName').value;
   $('hostBtn').onclick = async ()=>{
@@ -5206,7 +5213,7 @@ function wireOnlineTab(){
     hostWinVP = readTargetInput('hostTarget', fallback);
     hostWinVPCustom = hostWinVP !== fallback;
     $('hostErr').textContent = 'creating…';
-    try { await netHost(hostSeatCount, grab(), hostPublic, hostWinVP, hostWinVPCustom, hostAutoRoll, hostTimeout); $('hostErr').textContent = ''; }
+    try { await netHost(hostSeatCount, grab(), hostPublic, hostWinVP, hostWinVPCustom, hostAutoRoll, hostTimeout, hostUnlimited); $('hostErr').textContent = ''; }
     catch(e){ console.error('[harbour/net]', e); $('hostErr').textContent = netExplain(e); }
   };
   $('joinBtn').onclick = async ()=>{
@@ -5260,6 +5267,7 @@ let vsBots = true;
 let playWinVP = defaultWinVP(seatCount);
 let playAutoRoll = false;
 let playTimeout = false;
+let playUnlimited = false;
 let menuPane = 'play';
 {
   const seatOpts = Array.from({length:MAX_SEATS-1}, (_,i)=>[String(i+2), i+2]);
@@ -5278,6 +5286,11 @@ let menuPane = 'play';
   if (playTmo) playTmo.checked = playTimeout;
   if (playAuto) playAuto.onchange = ()=>{ playAutoRoll = !!playAuto.checked; };
   if (playTmo) playTmo.onchange = ()=>{ playTimeout = !!playTmo.checked; };
+  const playUnl = $('playUnlimited');
+  if (playUnl){
+    playUnl.checked = playUnlimited;
+    playUnl.onchange = ()=>{ playUnlimited = !!playUnl.checked; };
+  }
 }
 
 // ---- tab switching ----
@@ -5305,7 +5318,7 @@ $('startBtn').onclick = ()=>{
   closeTray();
   elLog.innerHTML = '';
   botStop();
-  newGame(seatCount, undefined, playWinVP);
+  newGame(seatCount, undefined, playWinVP, playUnlimited);
   G.autoRoll = !!playAutoRoll;
   G.turnSeconds = playTimeout ? 30 : 0;
   // seat 0 is always you; the rest are bots unless you asked for pass & play
@@ -5416,7 +5429,7 @@ async function netBoot(){
 
 // Online tables are people only. Seats stay open until somebody claims them,
 // and the game starts with exactly whoever turned up.
-async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCount), customWinVP=false, autoRoll=false, timeout=false){
+async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCount), customWinVP=false, autoRoll=false, timeout=false, unlimited=false){
   const fb = await netBoot();
   NET.mode = 'host';
   NET.seat = 0;
@@ -5428,9 +5441,10 @@ async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCou
   hostWinVPCustom = !!customWinVP;
   hostAutoRoll = !!autoRoll;
   hostTimeout = !!timeout;
+  hostUnlimited = !!unlimited;
 
   botStop();
-  newGame(seatCount, undefined, hostWinVP);
+  newGame(seatCount, undefined, hostWinVP, hostUnlimited);
   G.autoRoll = hostAutoRoll;
   G.turnSeconds = hostTimeout ? 30 : 0;
   G.players.forEach(p => { p.bot = false; });
@@ -5669,7 +5683,7 @@ function hostApplyIntent(it){
       const card = buyDev(seat);
       if (card){
         noteTurnActivity(seat);
-        announce(seat, 'bought a development card', `${G.devDeck.length} left`, false);
+        announce(seat, 'bought a development card', deckLeft(), false);
       }
       break;
     }
@@ -5786,8 +5800,8 @@ function showPendingIfMine(){
     const build = box => {
       box.innerHTML = '';
       for (const r of RES){
-        box.appendChild(resCard(r, G.bank[r], ()=>{
-          if (picked.length < 2 && G.bank[r] > 0) picked.push(r);
+        box.appendChild(resCard(r, '', ()=>{
+          if (picked.length < 2) picked.push(r);
           $('trayS').textContent = `${picked.length} of 2 chosen`;
           build(box); refreshTray();
         }, picked.includes(r)));
@@ -6188,7 +6202,7 @@ async function netStartGame(){
   const turnSeconds = G.turnSeconds || 0;
 
   botStop();
-  newGame(here.length, G.seed, hostWinVPCustom ? hostWinVP : defaultWinVP(here.length));
+  newGame(here.length, G.seed, hostWinVPCustom ? hostWinVP : defaultWinVP(here.length), G.unlimitedDevs);
   G.autoRoll = autoRoll;
   G.turnSeconds = turnSeconds;
   G.players.forEach((p, i) => { p.bot = false; p.name = here[i].name; });
@@ -6286,7 +6300,7 @@ function adminTakeRandom(seat){
   for (const r of RES) for (let i=0;i<p.res[r];i++) pool.push(r);
   if (!pool.length) return null;
   const r = pool[ri(pool.length)];
-  p.res[r]--; G.bank[r]++;
+  p.res[r]--;
   return r;
 }
 // Editing terrain or a number means new textures and a new token, so the board
@@ -6411,7 +6425,6 @@ function renderAdmin(){
       </div>
       <div class="admWrap">
         <button data-a="deck">REFILL DECK (${G.devDeck.length})</button>
-        <button data-a="bank">FILL BANK</button>
       </div>
 
       <div class="admSec">BOARD</div>
@@ -6437,14 +6450,12 @@ function renderAdmin(){
     if (act === 'seat') adminSeat = +v;
     else if (act === 'res'){
       const [r, d] = v.split(':');
-      const before = p.res[r];
       p.res[r] = Math.max(0, p.res[r] + (+d));
-      G.bank[r] = Math.max(0, G.bank[r] - (p.res[r] - before));
     }
     else if (act === 'vp') p.vpBonus = (p.vpBonus || 0) + (+v);
     else if (act === 'dev') adminGiveDev(adminSeat, v);
     else if (act === 'take') adminTakeRandom(adminSeat);
-    else if (act === 'clear') for (const r of RES){ G.bank[r] += p.res[r]; p.res[r] = 0; }
+    else if (act === 'clear') for (const r of RES) p.res[r] = 0;
     else if (act === 'roll') G.forceRoll = +v;
     else if (act === 'turn') adminSetTurn(+v);
     else if (act === 'reveal') ADMIN_REVEAL = !ADMIN_REVEAL;
@@ -6460,10 +6471,8 @@ function renderAdmin(){
     else if (act === 'army'){ G.armyOwner = adminSeat; G.armyN = Math.max(3, G.players[adminSeat].knights); }
     else if (act === 'target') WIN_VP = clamp(WIN_VP + (+v), 3, 30);
     else if (act === 'deck'){
-      G.devDeck = shuffle([...Array(14).fill('knight'), ...Array(5).fill('victory'),
-        ...Array(2).fill('roadBuilding'), ...Array(2).fill('yearOfPlenty'), ...Array(2).fill('monopoly')]);
+      G.devDeck = makeDevDeck();
     }
-    else if (act === 'bank'){ for (const r of RES) G.bank[r] = BIG_BOARD ? 26 : 19; }
     else if (act === 'free') adminFree = !adminFree;
     else if (act === 'wipe'){
       for (const vx of verts) if (vx.owner === adminSeat){ vx.building = null; vx.owner = -1; }
