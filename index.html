@@ -4322,9 +4322,13 @@ function openTray(title, sub, build, confirmLabel, onConfirm, validate, dismissi
   go.onclick = ()=>{ if (onConfirm) onConfirm(); };
 
   $('trayX').style.display = dismissible ? '' : 'none';
-  // a CLOSE button is redundant when the confirm button already just closes
-  $('trayClose').style.display = (dismissible && onConfirm && confirmLabel !== 'CLOSE'
-                                  && confirmLabel !== 'CANCEL') ? '' : 'none';
+  // a CLOSE button is redundant when the confirm button already just closes.
+  // Reset it every time: an offer someone else made turns it into DECLINE.
+  const close = $('trayClose');
+  close.textContent = 'CLOSE';
+  close.onclick = dismissTray;
+  close.style.display = (dismissible && onConfirm && confirmLabel !== 'CLOSE'
+                         && confirmLabel !== 'CANCEL') ? '' : 'none';
   tray._validate = validate;
   tray._dismissible = dismissible;
   tray.classList.remove('hide');
@@ -4335,7 +4339,6 @@ function dismissTray(){
   closeTray(); renderAll();
 }
 $('trayX').onclick = dismissTray;
-$('trayClose').onclick = dismissTray;
 tray.onclick = e => { if (e.target.id === 'tray') dismissTray(); };
 function refreshTray(){ if (tray._validate) $('trayGo').disabled = !tray._validate(); }
 
