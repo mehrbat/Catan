@@ -166,6 +166,8 @@ body.tucked #railR{ display:none }
 }
 .badge.army{background:#7a3a2c}
 .badge.road{background:#2d5340}
+/* narrow tiles swap the full title for a short one */
+.badge .short{display:none}
 
 /* ---------- log, right ---------- */
 #log{
@@ -669,6 +671,39 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
   color:var(--parch);font-size:14px;font-weight:700;letter-spacing:.14em;
   box-shadow:0 3px 0 #120d09;width:100%}
 
+/* ---------- game over: stays up until a new game starts ---------- */
+#winBox{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(480px,94vw);max-height:78vh;max-height:78dvh;overflow-y:auto;
+  padding:14px 18px 14px 22px;border-left:6px solid var(--seat);
+  overscroll-behavior:contain;
+}
+#winBox.hide{display:none}
+#winTop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+#winTop .ey{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--ink-soft)}
+#winH{font-size:24px;font-weight:800;letter-spacing:.03em;line-height:1.1}
+#winS{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:2px}
+#winMin{flex:0 0 auto;font-size:10.5px;letter-spacing:.12em;color:var(--ink-soft);
+  padding:5px 8px;border:1px solid var(--rule);border-radius:3px}
+.wq{font-size:12px;letter-spacing:.14em;color:var(--ink-soft);margin:14px 0 5px}
+.wtab{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px}
+.wtab td,.wtab th{padding:4px 6px 4px 0;border-bottom:1px solid var(--rule);text-align:left}
+.wtab th{font-size:9px;letter-spacing:.1em;color:var(--ink-soft);font-weight:400}
+.wtab td:last-child,.wtab th:last-child{text-align:right;padding-right:0;font-weight:600}
+.wtab tr.nil td{color:var(--ink-soft);font-weight:400}
+.wtab tr.tot td{border-bottom:none;font-weight:700;color:var(--ink)}
+.wtab.ranks td:not(:first-child),.wtab.ranks th:not(:first-child){text-align:center}
+.wtab.ranks td:last-child,.wtab.ranks th:last-child{text-align:right}
+.wtab .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;
+  border:1px solid rgba(0,0,0,.45);vertical-align:-1px}
+#winNew{margin-top:14px;padding:10px 0 11px;border-radius:3px;background:var(--ink);
+  color:var(--parch);font-size:14px;font-weight:700;letter-spacing:.14em;
+  box-shadow:0 3px 0 #120d09;width:100%}
+/* tucked away, it keeps the headline where the hint bar sits */
+#winBox.min{top:14px;transform:translateX(-50%);padding-top:9px;padding-bottom:9px}
+#winBox.min #winBody,#winBox.min #winNew{display:none}
+#winBox.min #winH{font-size:18px}
+
 /* ==========================================================
    Responsive layout
 
@@ -698,7 +733,12 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
   }
   #players::-webkit-scrollbar{ display:none }
   .pcard{ width:106px;flex:0 0 auto;padding:6px 8px 7px }
-  .pstats,.badges{ display:none }
+  .pstats{ display:none }
+  /* the road and army stay visible, just shorter */
+  .badges{ margin-top:3px;min-height:0;gap:3px;flex-wrap:nowrap }
+  .badge{ font-size:8px;letter-spacing:.06em;padding:0 3px;line-height:1.35 }
+  .badge .full{ display:none }
+  .badge .short{ display:inline }
   #hand{ bottom:calc(66px + env(safe-area-inset-bottom,0px));height:82px }
   .card{ width:46px;height:66px;margin-left:-14px }
   #actions{
@@ -723,7 +763,7 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
   :root{
     --barH:58px;      /* action bar */
     --handH:74px;     /* your cards */
-    --railH:44px;     /* player strip */
+    --railH:56px;     /* player strip: name, score, and the road/army badges */
     --safe:env(safe-area-inset-bottom,0px);
     --top:env(safe-area-inset-top,0px);
   }
@@ -770,7 +810,12 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
   .pcard{ width:92px;flex:0 0 auto;padding:5px 7px 6px }
   .pcard .nm{ font-size:11.5px }
   .pcard .vp{ font-size:12px }
-  .pstats,.badges{ display:none }
+  .pstats{ display:none }
+  /* the road and army stay visible, just shorter */
+  .badges{ margin-top:3px;min-height:0;gap:3px;flex-wrap:nowrap }
+  .badge{ font-size:8px;letter-spacing:.06em;padding:0 3px;line-height:1.35 }
+  .badge .full{ display:none }
+  .badge .short{ display:inline }
 
   #prompt{
     top:auto;left:8px;right:8px;transform:none;
@@ -779,6 +824,14 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
   }
   #prompt .h{ font-size:13.5px }
   #prompt .s{ font-size:9.5px;line-height:1.4 }
+
+  #winBox{ max-height:calc(100% - var(--barH) - var(--safe) - var(--top) - 24px);
+    top:calc(var(--top) + 10px);transform:translateX(-50%);padding:12px 14px 12px 17px }
+  #winH{ font-size:20px }
+  .wtab{ font-size:10.5px }
+  #winBox.min{ top:auto;left:8px;right:8px;width:auto;transform:none;
+    bottom:calc(var(--barH) + var(--handH) + var(--railH) + 6px + var(--safe)) }
+  #winBox.min #winH{ font-size:14px }
 
   #chatWrap{
     left:8px;right:8px;width:auto;
@@ -813,6 +866,7 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
   body.tucked #players,
   body.tucked #chatWrap{ display:none }
   body.tucked #prompt{ bottom:calc(var(--barH) + 6px + var(--safe)) }
+  body.tucked #winBox.min{ bottom:calc(var(--barH) + 6px + var(--safe)) }
 }
 
 /* ---------- anything without a mouse ---------- */
@@ -898,6 +952,19 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
     <div class="h" id="promptH"></div>
     <div class="s" id="promptS"></div>
     <button id="promptCancel">CANCEL</button>
+  </div>
+
+  <div id="winBox" class="panel hide">
+    <div id="winTop">
+      <div>
+        <div class="ey">GAME OVER</div>
+        <div id="winH"></div>
+        <div id="winS"></div>
+      </div>
+      <button id="winMin">HIDE</button>
+    </div>
+    <div id="winBody"></div>
+    <button id="winNew">NEW GAME</button>
   </div>
 </div>
 
@@ -1552,15 +1619,19 @@ function recomputeArmy(){
 
 /* ---- scoring ---- */
 
-function victoryPoints(pid, includeHidden=true){
+// where every point comes from — the game-over panel shows this line by line
+function vpBreakdown(pid){
   const p = G.players[pid];
-  let vp = 0;
-  for (const v of verts) if (v.owner === pid) vp += (v.building === 'city' ? 2 : 1);
-  if (G.longestOwner === pid) vp += 2;
-  if (G.armyOwner === pid) vp += 2;
-  if (includeHidden) vp += p.vpCards;
-  vp += p.vpBonus || 0;         // adjustable from the debug panel
-  return vp;
+  const b = { settlements:0, cities:0, road:0, army:0, cards:p.vpCards, bonus:p.vpBonus || 0 };
+  for (const v of verts) if (v.owner === pid){ if (v.building === 'city') b.cities++; else b.settlements++; }
+  if (G.longestOwner === pid) b.road = 2;
+  if (G.armyOwner === pid) b.army = 2;
+  b.total = b.settlements + b.cities * 2 + b.road + b.army + b.cards + b.bonus;
+  return b;
+}
+function victoryPoints(pid, includeHidden=true){
+  const b = vpBreakdown(pid);
+  return includeHidden ? b.total : b.total - b.cards;
 }
 function checkWin(){
   for (const p of G.players) if (victoryPoints(p.id) >= WIN_VP){ G.winner = p.id; G.phase='over'; return true; }
@@ -3477,7 +3548,8 @@ function renderPlayers(){
     const d = document.createElement('div');
     d.className = 'pcard panel' + (p.id === G.turn ? ' turn' : '');
     d.style.setProperty('--seat', p.css);
-    const pub = victoryPoints(p.id, false);
+    // hidden victory cards are revealed once the game is over
+    const pub = victoryPoints(p.id, G.phase === 'over');
     d.innerHTML = `
       <div class="top"><span class="nm">${p.name}${
         p.bot ? ' <small style="font-size:9.5px;letter-spacing:.12em;color:var(--ink-soft)">BOT</small>'
@@ -3489,8 +3561,8 @@ function renderPlayers(){
         <span>rd <b>${p.stock.road}</b></span>
       </div>
       <div class="badges">
-        ${G.armyOwner===p.id ? `<span class="badge army">ARMY ${p.knights}</span>` : ''}
-        ${G.longestOwner===p.id ? `<span class="badge road">ROAD ${G.longestLen}</span>` : ''}
+        ${G.longestOwner===p.id ? `<span class="badge road" title="Longest Road: ${G.longestLen} roads in a row, worth 2 VP"><span class="full">LONGEST ROAD ${G.longestLen} · +2 VP</span><span class="short">ROAD</span></span>` : ''}
+        ${G.armyOwner===p.id ? `<span class="badge army" title="Largest Army: ${p.knights} knights played, worth 2 VP"><span class="full">LARGEST ARMY ${p.knights} · +2 VP</span><span class="short">ARMY</span></span>` : ''}
       </div>`;
     elPlayers.appendChild(d);
   }
@@ -3792,6 +3864,7 @@ function renderAll(){
   syncDiscardUI();    // your own discard, never anybody else's
   syncOfferUI();      // an offer on the table shows up for everyone it concerns
   renderVote();
+  renderWin();
   fitUI();
   tickTurnClock();
   netPush();          // one hook: every state change reaches the table
@@ -3806,8 +3879,9 @@ function clearHoverHint(){ hoverHint = null; paintHint(); }
 function phaseHint(){
   const p = cur();
   if (G.phase === 'over'){
-    const w = G.players[G.winner] || p;
-    return { h:`${w.name} wins`, s:`${victoryPoints(w.id)} victory points. Start a new game whenever you like.` };
+    // the game-over panel carries the result; the hint bar would only repeat it
+    if (G.players[G.winner]) return { h:'', s:'' };
+    return { h:'Game over', s:'Start a new game whenever you like.' };
   }
   if (G.phase === 'setup'){
     if (p.bot) return { h:`${p.name} is choosing a spot`, s:'Bots settle where the numbers are best.' };
@@ -3839,6 +3913,63 @@ function paintHint(){
 // kept so existing call sites simply trigger a repaint
 function setPrompt(){ paintHint(); }
 function hidePrompt(){ paintHint(); }
+
+// The result stays on screen for as long as the game is over: who won, and
+// exactly where each of their points came from, next to everyone else's.
+let winTucked = false;
+function renderWin(){
+  const box = $('winBox');
+  const w = G.players[G.winner];
+  if (G.phase !== 'over' || !w){ box.classList.add('hide'); winTucked = false; return; }
+
+  const wb = vpBreakdown(w.id);
+  const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
+  const holder = id => G.players[id] ? `held by ${esc(G.players[id].name)}` : null;
+  box.classList.remove('hide');
+  box.classList.toggle('min', winTucked);
+  box.style.setProperty('--seat', w.css);
+  $('winH').textContent = `${w.name} wins`;
+  $('winS').textContent = `${wb.total} victory points · target ${WIN_VP}`;
+  $('winMin').textContent = winTucked ? 'SHOW SCORES' : 'HIDE';
+  if (winTucked) return;
+
+  const why = (label, detail, pts) =>
+    `<tr class="${pts ? '' : 'nil'}"><td>${label}</td><td>${detail}</td><td>${pts ? '+' + pts : '0'}</td></tr>`;
+  const rows = [
+    why('Settlements', `${plural(wb.settlements, 'settlement')} × 1`, wb.settlements),
+    why('Cities', `${plural(wb.cities, 'city', 'cities')} × 2`, wb.cities * 2),
+    why('Longest Road', wb.road ? `${G.longestLen} roads in a row`
+        : holder(G.longestOwner) || 'nobody reached 5 roads', wb.road),
+    why('Largest Army', wb.army ? `${plural(w.knights, 'knight')} played`
+        : holder(G.armyOwner) || 'nobody played 3 knights', wb.army),
+    why('Victory point cards', plural(wb.cards, 'card'), wb.cards),
+  ];
+  if (wb.bonus) rows.push(why('Bonus', 'set from the debug panel', wb.bonus));
+  rows.push(`<tr class="tot"><td>Total</td><td></td><td>${wb.total}</td></tr>`);
+
+  // everyone's final score, winner first, then highest to lowest
+  const board = G.players.map(p => ({ p, b: vpBreakdown(p.id) }))
+    .sort((a, c) => (c.p.id === w.id) - (a.p.id === w.id) || c.b.total - a.b.total);
+  const anyBonus = board.some(r => r.b.bonus);
+  const dash = n => n ? n : '–';
+  const ranks = board.map(({ p, b }) => `<tr>
+      <td><span class="sw" style="background:${p.css}"></span>${esc(p.name)}</td>
+      <td>${dash(b.settlements)}</td><td>${dash(b.cities * 2)}</td>
+      <td>${dash(b.road)}</td><td>${dash(b.army)}</td><td>${dash(b.cards)}</td>
+      ${anyBonus ? `<td>${dash(b.bonus)}</td>` : ''}<td>${b.total}</td></tr>`).join('');
+
+  $('winBody').innerHTML = `
+    <div class="wq">WHY ${esc(w.name).toUpperCase()} WON</div>
+    <table class="wtab">${rows.join('')}</table>
+    <div class="wq">FINAL SCORES · POINTS FROM EACH SOURCE</div>
+    <table class="wtab ranks">
+      <tr><th>PLAYER</th><th>SETTLE</th><th>CITY</th><th>ROAD</th><th>ARMY</th><th>CARDS</th>
+        ${anyBonus ? '<th>BONUS</th>' : ''}<th>VP</th></tr>
+      ${ranks}
+    </table>`;
+}
+$('winMin').onclick = () => { winTucked = !winTucked; renderWin(); fitUI(); };
+$('winNew').onclick = () => $('modal').classList.remove('hide');
 
 function openHelp(){ $('helpRules').innerHTML = rulesHTML(); $('help').classList.remove('hide'); }
 function closeHelp(){ $('help').classList.add('hide'); }
