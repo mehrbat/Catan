@@ -115,6 +115,20 @@ body.tucked #railR{ display:none }
 }
 #turnClock:empty{display:none}
 #turnClock.low{color:#a8321f}
+/* the same clock, large and faint across the top of the board; each second
+   lands bold and fades, so it reads at a glance without covering the play */
+#bigClock{
+  position:absolute;left:50%;top:calc(74px + var(--safeT));transform:translateX(-50%);
+  text-align:center;pointer-events:none;color:var(--ink);opacity:.4;
+  z-index:8;               /* above the prompt, toasts and vote bar */
+  text-shadow:0 0 14px rgba(244,236,218,.8);
+}
+#bigClock.hide{display:none}
+#bigClock .n{font-family:var(--mono);font-size:58px;font-weight:600;line-height:1}
+#bigClock .c{font-family:var(--mono);font-size:10px;letter-spacing:.2em;margin-top:2px}
+#bigClock.low{color:#a8321f}
+#bigClock.tick{animation:clockFade 1s ease-out forwards}
+@keyframes clockFade{ from{opacity:.62} to{opacity:.16} }
 #uiToggle{
   display:none;margin-top:6px;width:100%;padding:7px 10px;border-radius:3px;
   background:var(--parch-2);border:1px solid rgba(42,32,24,.36);
@@ -797,6 +811,8 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
   #phaseLine{ display:none }
   #netStatus{ font-size:8.5px }
   #turnClock{ font-size:17px }
+  #bigClock{ top:calc(64px + var(--top)) }
+  #bigClock .n{ font-size:40px }
   #uiToggle{ display:block }
 
   #dice{ top:calc(8px + var(--top));right:8px;left:auto;gap:5px }
@@ -966,6 +982,8 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
   <div id="bubble" class="panel hide"></div>
 
   <div id="voteBar" class="panel hide"></div>
+
+  <div id="bigClock" class="hide"><div class="n"></div><div class="c"></div></div>
 
   <div id="toasts"></div>
 
@@ -1448,6 +1466,7 @@ const G = {
   robberReturn: 'main',       // the phase to resume once the robber is settled
   discardDue: {},             // seat -> cards still owed after a seven
   turnEndsAt: 0,              // host's clock; everyone counts down against it
+  discardEndsAt: 0,           // host's clock for a seven's discards (0 = not running)
   autoRoll: false,            // host-selected game option
   turnSeconds: 0,             // host-selected inactivity timeout (0 = off)
   unlimitedDevs: false,       // host-selected: the development deck never runs out
@@ -1494,7 +1513,7 @@ function newGame(nPlayers, seed, initialWinVP = defaultWinVP(nPlayers), unlimite
   G.robberReturn = 'main'; G.vote = null; G.forceRoll = 0;
   G.autoRoll = false; G.turnSeconds = 0;
   G.removals = false; G.removalSeq = 0; G.recentRemovals = [];
-  G.discardDue = {};
+  G.discardDue = {}; G.discardEndsAt = 0;
 
   // Two passes round the table in the same direction, matching normal turn
   // order. Official Catan reverses the second pass to compensate the last
@@ -2159,7 +2178,7 @@ function serializeState(){
     recentRemovals: (G.recentRemovals || []).map(r => ({ ...r })),
     vote: G.vote ? { target:G.vote.target, yes:G.vote.yes.slice(),
                      no:G.vote.no.slice(), ends:G.vote.ends } : null,
-    discardDue: { ...G.discardDue },
+    discardDue: { ...G.discardDue }, discardEndsAt: G.discardEndsAt || 0,
     longestOwner: G.longestOwner, longestLen: G.longestLen,
     armyOwner: G.armyOwner, armyN: G.armyN,
     devPlayed: G.devPlayed, freeRoads: G.freeRoads, winner: G.winner, winVP: WIN_VP,
@@ -2223,6 +2242,7 @@ function applyState(snap){
         no:(snap.vote.no||[]).slice(), ends:snap.vote.ends || 0 }
     : null;
   G.discardDue = { ...(snap.discardDue || {}) };
+  G.discardEndsAt = snap.discardEndsAt || 0;
   G.turnEndsAt = snap.turnEndsAt || 0;
 
   G.devDeck = (snap.deck || []).slice();
@@ -2469,6 +2489,41 @@ function botRobberTile(pid){
     if (!best || harm > best.harm) best = { id:t.id, harm };
   }
   return best ? best.id : tiles.find(t => t.id !== G.robber).id;
+}
+
+// Opponents, the biggest threat first: public points, then cards in hand.
+function rivalsByThreat(pid){
+  return G.players.filter(q => q.id !== pid)
+    .sort((a, b) => (victoryPoints(b.id, false) - victoryPoints(a.id, false))
+                 || (totalCards(b) - totalCards(a)));
+}
+
+// The robber move made for a human who let the clock run out: the top rival's
+// most likely hex (6 and 8, then 5 and 9, 4 and 10, 3 and 11, 2 and 12), never
+// a hex we have a building on ourselves.
+function timeoutRobberTile(pid){
+  for (const rival of rivalsByThreat(pid)){
+    let best = null;
+    for (const t of tiles){
+      if (t.id === G.robber || !t.res) continue;
+      let weight = 0, hitsSelf = false;
+      for (const vid of t.verts){
+        const v = verts[vid];
+        if (!v.building) continue;
+        if (v.owner === pid) hitsSelf = true;
+        else if (v.owner === rival.id) weight += v.building === 'city' ? 2 : 1;
+      }
+      if (hitsSelf || !weight) continue;
+      const s = pips(t.number) * 10 + weight;
+      if (!best || s > best.s) best = { id:t.id, s };
+    }
+    if (best) return best.id;
+  }
+  return botRobberTile(pid);
+}
+
+function timeoutRobberVictim(pid, candidates){
+  return rivalsByThreat(pid).find(q => candidates.includes(q.id))?.id ?? candidates[0];
 }
 
 function botRobberVictim(pid, candidates){
@@ -4515,8 +4570,11 @@ function onClick(){
 
 const tray = $('tray');
 tray._removalPid = -1;          // the seat whose removal is waiting on CONFIRM
+// What the turn clock does with a choice still open on this screen when it
+// runs out. Set by the trays that hold up the turn; cleared with the tray.
+let idleTray = null;
 function closeTray(){
-  tray.classList.add('hide'); trayKind = null; tray._removalPid = -1;
+  tray.classList.add('hide'); trayKind = null; tray._removalPid = -1; idleTray = null;
   const after = tray._onClose; tray._onClose = null;
   after?.();
 }
@@ -4527,6 +4585,7 @@ function openTray(title, sub, build, confirmLabel, onConfirm, validate, dismissi
   $('trayH').textContent = title;
   $('trayS').textContent = sub || '';
   const replaced = tray._onClose; tray._onClose = null; tray._removalPid = -1;
+  idleTray = null;
   replaced?.();
   const box = $('trayCards'); box.innerHTML = '';
   // some trays stack their rows; the next one starts from the default layout
@@ -4637,6 +4696,7 @@ function trayDiscard(pid){
 function afterDiscards(){
   if (!iAmHost()){ renderAll(); return; }
   if (discardsOutstanding()){ renderAll(); return; }
+  G.discardEndsAt = 0;
   beginRobber(G.rollBy >= 0 ? G.rollBy : G.turn);
 }
 
@@ -4654,14 +4714,19 @@ function trayVictim(list, pid, done){
         // Guests must not touch state: doing so left the host unaware, the
         // pending choice unresolved, and the two screens permanently apart.
         if (NET.mode === 'guest'){ sendIntent('steal', { victim:vid }); closeTray(); return; }
-        const got = stealFrom(vid, pid);
-        log(got ? `${nameOf(pid)} robs ${nameOf(vid)}` : `${nameOf(vid)} had nothing`);
-        G.pending = null;
-        closeTray(); done();
+        rob(vid);
       };
       box.appendChild(c);
     }
   }, 'PICK', null, null, false);
+  const rob = vid => {
+    const got = stealFrom(vid, pid);
+    log(got ? `${nameOf(pid)} robs ${nameOf(vid)}` : `${nameOf(vid)} had nothing`);
+    G.pending = null;
+    closeTray(); done();
+  };
+  // left too long, the top rival on that hex is robbed
+  if (NET.mode !== 'guest') idleTray = () => rob(timeoutRobberVictim(pid, list));
 }
 
 /* ---- bank / port trade ---- */
@@ -4808,6 +4873,7 @@ function playDev(card){
       log(`${nameOf(p.id)} takes ${picked.map(r=>RES_LABEL[r].toLowerCase()).join(' and ')}`);
       closeTray(); if (checkWin()) return announceWin(); renderAll();
     }, ()=>picked.length===2);
+    idleTray = () => closeTray();   // left too long, the card stays in hand
     return;
   }
   if (card === 'monopoly' && !isBot(p.id) && !(isOnline() && p.id !== NET.seat)){
@@ -4827,6 +4893,7 @@ function playDev(card){
         }, false));
       }
     }, 'CANCEL', ()=>{ closeTray(); renderAll(); }, null);
+    idleTray = () => closeTray();   // left too long, the card stays in hand
     return;
   }
   consumeDev(p.id, card);
@@ -5006,6 +5073,7 @@ function doRoll(countActivity = true){
       botDiscardAll();                 // bots settle up at once
       setTimeout(()=>{
         diceSettling = false;          // from here awaitRobber / discardDue say what is owed
+        startDiscardClock();
         renderAll();                   // everyone who owes gets their own tray
         if (!discardsOutstanding()) afterDiscards();
       }, 900);
@@ -5034,6 +5102,8 @@ function beginRobber(pid){
   // A knight can be played before rolling. Forcing 'main' afterwards used to
   // swallow the roll entirely, so remember where we came from.
   G.robberReturn = G.phase === 'roll' ? 'roll' : 'main';
+  // with the inactivity clock on, a human gets a full window to move the robber
+  if (!isBot(pid)){ turnPauseStartedAt = 0; refreshTurnDeadline(); }
   if (isOnline() && pid !== NET.seat && !isBot(pid)){ renderAll(); return; }
   if (!isBot(pid)){ armPlacement('robber', { pid, forced:true }); return; }
   botSoon(()=>{
@@ -5043,11 +5113,12 @@ function beginRobber(pid){
   }, BOT_PACE.think);
 }
 
-function resolveRobber(tileId, pid){
+function resolveRobber(tileId, pid, timedOut=false){
   // only the seat that owes a robber move gets one, and never before the seven's
   // discards are paid — a stale prompt or a late intent must not rob anybody
   if (G.awaitRobber !== pid || discardsOutstanding()) return;
   G.awaitRobber = -1;
+  refreshTurnDeadline();      // moving the robber counts as activity
   G.robber = tileId;
   reachFor(pid, tiles[tileId].x, tiles[tileId].z, () => moveRobberMesh(tileId));
   mode = null; clearNodes(); hidePrompt();
@@ -5061,8 +5132,9 @@ function resolveRobber(tileId, pid){
     renderAll();
     if (isBot(pid)) botSoon(isBot(pid) && G.phase === 'roll' ? botTakeTurn : botStep, BOT_PACE.act);
   };
-  if (vics.length === 1 || (vics.length > 1 && isBot(pid))){
-    const victim = vics.length === 1 ? vics[0] : botRobberVictim(pid, vics);
+  if (vics.length === 1 || (vics.length > 1 && (isBot(pid) || timedOut))){
+    const victim = vics.length === 1 ? vics[0]
+                 : timedOut ? timeoutRobberVictim(pid, vics) : botRobberVictim(pid, vics);
     const got = stealFrom(victim, pid);
     log(got ? `${nameOf(pid)} robs ${nameOf(victim)}` : `${nameOf(victim)} had nothing`);
     finish();
@@ -5177,6 +5249,7 @@ function startTurnClock(){
     G.turnEndsAt = 0;
     const el = $('turnClock');
     if (el) el.textContent = '';
+    showBigClock(-1);
     return;
   }
   if (!clockPaused()) refreshTurnDeadline();
@@ -5184,24 +5257,70 @@ function startTurnClock(){
 }
 function clockPaused(){
   if (ADMIN_PAUSE) return true;
-  return G.phase !== 'roll' && G.phase !== 'main'
-      || !!G.pending || !!G.offer || G.awaitRobber >= 0
-      || discardsOutstanding();
+  return G.phase !== 'roll' && G.phase !== 'main' || discardsOutstanding();
+}
+// A choice or an offer left open when the turn clock runs out is dropped, so
+// the turn can move on: a card's choice is cancelled and the card goes back to
+// hand, an offer is withdrawn, and a robbery takes from the top rival.
+function closeIdleChoices(){
+  if (idleTray){ const f = idleTray; idleTray = null; f(); }
+  // a placement still armed on this screen, such as Road Building's free roads
+  if (mode && mode.pid === G.turn){ mode = null; clearNodes(); hidePrompt(); }
+  const pend = G.pending;
+  if (pend){
+    if (pend.kind === 'steal'){
+      const victim = timeoutRobberVictim(pend.seat, pend.victims);
+      const got = stealFrom(victim, pend.seat);
+      log(got ? `${nameOf(pend.seat)} robs ${nameOf(victim)}` : `${nameOf(victim)} had nothing`);
+      G.phase = G.robberReturn || 'main';
+      G.robberReturn = 'main';
+    } else if (G.players[pend.seat]){
+      G.players[pend.seat].devs.push(pend.kind === 'monopoly' ? 'monopoly' : 'yearOfPlenty');
+    }
+    G.pending = null;
+  }
+  if (G.offer){ G.offer = null; log('the trade offer is withdrawn'); }
+  if (G.phase !== 'over' && checkWin()) announceWin();
+}
+
+// The large, faint countdown across the top. left < 0 hides it.
+let bigClockShown = -1;
+function showBigClock(left, caption = ''){
+  const el = $('bigClock');
+  if (!el) return;
+  if (left < 0){ el.classList.add('hide'); bigClockShown = -1; return; }
+  el.classList.remove('hide');
+  el.classList.toggle('low', left <= 8);
+  el.querySelector('.c').textContent = caption;
+  if (left === bigClockShown) return;
+  bigClockShown = left;
+  el.querySelector('.n').textContent = left;
+  el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick');
 }
 function tickTurnClock(){
-  if (!G.turnSeconds) return;
+  if (!G.turnSeconds){ showBigClock(-1); return; }
   const el = $('turnClock');
-  if (!G.turnEndsAt){ if (el) el.textContent = ''; return; }
+  // a seven's discards run on their own clock while the turn clock waits
+  if (discardsOutstanding() && G.discardEndsAt && !ADMIN_PAUSE){
+    if (!turnPauseStartedAt) turnPauseStartedAt = Date.now();
+    const left = Math.max(0, Math.ceil((G.discardEndsAt - Date.now()) / 1000));
+    if (el){ el.textContent = `${left}s`; el.classList.toggle('low', left <= 8); }
+    showBigClock(left, 'DISCARD');
+    if (left <= 0 && iAmHost()) discardForIdle();
+    return;
+  }
+  if (!G.turnEndsAt){ if (el) el.textContent = ''; showBigClock(-1); return; }
   if (clockPaused()){
-    const resettablePause = ADMIN_PAUSE || G.awaitRobber >= 0 || !!G.pending || discardsOutstanding();
+    const resettablePause = ADMIN_PAUSE || discardsOutstanding();
     if (resettablePause && !turnPauseStartedAt) turnPauseStartedAt = Date.now();
     if (el) el.textContent = '';
+    showBigClock(-1);
     return;
   }
   if (turnPauseStartedAt){
     const pausedFor = Date.now() - turnPauseStartedAt;
     turnPauseStartedAt = 0;
-    if (!iAmHost()){ if (el) el.textContent = ''; return; }
+    if (!iAmHost()){ if (el) el.textContent = ''; showBigClock(-1); return; }
     G.turnEndsAt += pausedFor;
     if (NET.mode === 'host' && NET.ready) netPush();
   }
@@ -5210,16 +5329,33 @@ function tickTurnClock(){
     el.textContent = `${left}s`;
     el.classList.toggle('low', left <= 8);
   }
-  if (left > 0 || !iAmHost() || isBot(G.turn)) return;
+  // bots are never timed, so only a human's clock goes up large
+  const owner = G.awaitRobber >= 0 ? G.awaitRobber : G.turn;
+  if (isBot(owner)) showBigClock(-1);
+  else showBigClock(left, (G.players[owner].name + (G.awaitRobber >= 0 ? ' · robber' : '')).toUpperCase());
+  if (left > 0 || !iAmHost()) return;
 
-  if (G.phase === 'roll'){
-    log(`${nameOf(G.turn)} ran out of time`);
-    refreshTurnDeadline();     // avoid retriggering while the roll animation resolves
-    doRoll(false);
-  } else {
-    log(`${nameOf(G.turn)} ran out of time`);
-    doEndTurn();
+  // a robber move left too long is made for that player
+  if (G.awaitRobber >= 0){
+    const pid = G.awaitRobber;
+    if (isBot(pid)) return;
+    log(`${nameOf(pid)} ran out of time`);
+    resolveRobber(timeoutRobberTile(pid), pid, true);
+    // and the turn ends with it — unless a knight played before rolling means
+    // the roll is still owed, in which case the dice are thrown for them first
+    if (pid !== G.turn || G.pending) return;
+    if (G.phase === 'main') doEndTurn();
+    else if (G.phase === 'roll') doRoll(false);
+    return;
   }
+  if (isBot(G.turn)) return;
+
+  log(`${nameOf(G.turn)} ran out of time`);
+  refreshTurnDeadline();       // avoid retriggering while the roll animation or a nested render runs
+  closeIdleChoices();
+  if (G.phase === 'over') return;            // a last robbery can win the game
+  if (G.phase === 'roll') doRoll(false);
+  else doEndTurn();
 }
 
 // The host owns the flow, so auto-roll is applied there for every human seat.
@@ -5326,6 +5462,24 @@ function botDiscardAll(){
   }
 }
 
+// With the inactivity clock on, everyone who owes a discard gets one window.
+function startDiscardClock(){
+  if (!iAmHost() || !G.turnSeconds || !discardsOutstanding()) return;
+  G.discardEndsAt = Date.now() + G.turnSeconds * 1000;
+}
+
+// When it runs out, whoever has not paid discards the way a bot would.
+function discardForIdle(){
+  for (const pid of Object.keys(G.discardDue).map(Number)){
+    const n = G.discardDue[pid];
+    if (!(n > 0)) continue;
+    payDiscard(pid, botDiscard(pid, n));
+    log(`${nameOf(pid)} ran out of time and discards ${n}`);
+  }
+  G.discardEndsAt = 0;
+  afterDiscards();
+}
+
 /* ============================================================
    8c. OFFERING A TRADE TO THE TABLE
    ============================================================ */
@@ -5415,6 +5569,7 @@ function openOfferTray(){
       if (!bagTotal(give) || !bagTotal(get)) return;
       proposeOffer(give, get);
     }, null);
+  idleTray = () => closeTray();
 }
 
 /* ---- the live offer, seen by everybody ---- */
@@ -5520,6 +5675,8 @@ function renderLiveOffer(){
 // Open, refresh, or close the offer tray to match the shared state.
 let trayKind = null, offerSig = null;
 function syncOfferUI(){
+  // an offer still being written does not outlive its turn
+  if (trayKind === 'compose' && (G.turn !== viewSeat() || G.phase !== 'main')) closeTray();
   const o = G.offer;
   const sig = o ? `${o.from}|${JSON.stringify(o.give)}|${JSON.stringify(o.get)}|${JSON.stringify(o.replies)}` : null;
 
@@ -5977,6 +6134,8 @@ async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCou
 /* ---------- joining ---------- */
 
 async function netJoin(code, name){
+  name = (name || '').trim();
+  if (!name){ $('joinName')?.focus(); throw new Error('Type your name first.'); }
   const fb = await netBoot();
   code = (code || '').trim().toUpperCase();
   const roomRef = fb.ref(NET.db, 'rooms/' + code);
@@ -5993,7 +6152,7 @@ async function netJoin(code, name){
   NET.code = code;
   NET.seat = free;
   NET.roomRef = roomRef;
-  NET.myName = (name || '').trim() || SEATS[free].name;
+  NET.myName = name;
 
   await fb.update(fb.ref(NET.db, `rooms/${code}/seats/${free}`), {
     uid: NET.uid, name: NET.myName
@@ -6273,10 +6432,12 @@ function showPendingIfMine(){
   const sig = pend ? `${pend.seat}:${pend.kind}` : null;
   if (sig === pendingShown) return;
   pendingShown = sig;
+  if (trayKind === 'pending') closeTray();     // the host settled or dropped it
   if (!pend || pend.seat !== NET.seat) return;
 
   if (pend.kind === 'steal'){
     trayVictim(pend.victims, NET.seat, ()=>{});
+    trayKind = 'pending';
   } else if (pend.kind === 'plenty'){
     const picked = [];
     const build = box => {
@@ -6293,6 +6454,7 @@ function showPendingIfMine(){
       sendIntent('plenty', { picks:picked });
       closeTray();
     }, ()=>picked.length === 2, false);
+    trayKind = 'pending';
   } else if (pend.kind === 'monopoly'){
     openTray('Monopoly', 'name a resource', box=>{
       for (const r of RES) box.appendChild(resCard(r, '', ()=>{
@@ -6300,6 +6462,7 @@ function showPendingIfMine(){
         closeTray();
       }, false));
     }, 'CANCEL', null, null, false);
+    trayKind = 'pending';
   }
 }
 
@@ -6663,10 +6826,11 @@ function renderLobby(){
     : NET.listed ? `<div class="listOk">listed on the public tab</div>`
     : `<div class="listOk">listing…</div>`;
 
+  // every table has a code, public or not; only the host knows which it is
+  const codeLabel = NET.mode !== 'host' ? 'SHARE THIS CODE'
+                  : NET.public ? 'PUBLIC — OR SHARE THIS CODE' : 'PRIVATE — SHARE THIS CODE';
   body.innerHTML = `
-    ${NET.public
-      ? `<div class="codeBox"><span>PUBLIC TABLE</span><b>OPEN</b></div>`
-      : `<div class="codeBox"><span>PRIVATE — SHARE THIS CODE</span><b>${NET.code || '----'}</b></div>`}
+    <div class="codeBox"><span>${codeLabel}</span><b>${NET.code || '----'}</b></div>
     ${listing}
     ${G.removals ? '<div class="listOk">removal extension on — rivals can pay to tear pieces down</div>' : ''}
     <div class="lobbyList">${idx.map(i => {
