@@ -228,12 +228,12 @@ body.tucked #railR{ display:none }
 /* ---------- action bar ---------- */
 #actions{
   position:absolute;left:50%;bottom:calc(10px + var(--safe));transform:translateX(-50%);
-  display:flex;gap:6px;align-items:stretch;padding:7px;
+  display:flex;gap:6px;align-items:stretch;padding:5px;
   max-width:calc(100vw - 24px);overflow-x:auto;scrollbar-width:none;
 }
 #actions::-webkit-scrollbar{display:none}
 .act{
-  padding:8px 13px 9px;border-radius:3px;background:var(--parch-2);
+  padding:7px 13px 7px;border-radius:3px;background:var(--parch-2);
   border:1px solid rgba(42,32,24,.4);box-shadow:0 2px 0 rgba(42,32,24,.28);
   font-size:14px;font-weight:700;letter-spacing:.05em;line-height:1;
   display:flex;flex-direction:column;align-items:center;gap:4px;min-width:74px;
@@ -252,6 +252,7 @@ body.tucked #railR{ display:none }
 .act.primary:hover:not(:disabled){background:#cd9a48}
 .act.armed{background:#2d5340;color:var(--parch);border-color:#16281e}
 .act.armed .cost{color:rgba(233,221,193,.7)}
+.act.danger.armed{background:#7a2c22;border-color:#3d140f}
 
 /* ---------- prompt banner ---------- */
 #prompt{
@@ -322,7 +323,7 @@ body.tucked #railR{ display:none }
 }
 #tray.hide{display:none}
 #trayBox{width:min(500px,94vw);padding:20px 22px 18px;text-align:center}
-#trayBox h2{font-size:24px;font-weight:800;letter-spacing:.03em}
+#trayBox h2{font-size:24px;font-weight:800;letter-spacing:.03em;padding:0 36px}
 #trayBox .s{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:2px}
 #trayCards{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:16px 0 14px}
 .tcard{
@@ -347,6 +348,26 @@ body.tucked #railR{ display:none }
 }
 #trayX:hover{background:rgba(42,32,24,.1);color:var(--ink)}
 #trayBox{position:relative}
+/* a tall tray on a short screen scrolls instead of pushing its buttons off */
+#trayBox{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow-y:auto;
+  -webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+
+/* ---------- removal extension ---------- */
+.rmRow{display:block;width:100%;text-align:left;padding:10px 12px;margin-bottom:6px;
+  border-radius:3px;background:#5e2b22;color:#f6ebe6;border:1px solid rgba(0,0,0,.4)}
+.rmRow:disabled{background:#43302c;opacity:.6;cursor:not-allowed}
+.rmRow .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.rmRow .nm{font-size:14px;letter-spacing:.09em}
+.rmRow .st{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;opacity:.9;text-align:right}
+.rmRow .ds{display:block;font-family:var(--mono);font-size:10px;opacity:.85;line-height:1.45;margin-top:3px}
+.rmCost{display:flex;flex-wrap:wrap;align-items:center;gap:2px;margin-top:6px}
+.rmCost s{width:9px;height:9px;border-radius:1px;display:block;text-decoration:none;
+  border:1px solid rgba(0,0,0,.35)}
+.rmCost s.vp{background:#e8c66a;border-radius:50%}
+.rmCost s.lack{opacity:.25}
+.rmCost i{font-style:normal;font-family:var(--mono);font-size:9.5px;opacity:.85;margin-left:6px}
+.rmNote{text-align:left;font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--ink-soft)}
+.rmNote b{color:var(--ink)}
 
 #flyer{ position:fixed;inset:0;pointer-events:none;z-index:8;overflow:hidden }
 .fly{
@@ -718,7 +739,7 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
   #log{ max-height:22vh;font-size:10px;width:210px }
   #hand{ bottom:74px;height:90px }
   .card{ width:52px;height:76px;margin-left:-15px }
-  .act{ padding:7px 11px 8px;font-size:13px }
+  .act{ padding:6px 11px 6px;font-size:13px }
   #chatLog{ max-height:18vh }
   /* the hint bar stays at the top, where there is always room for it */
 }
@@ -743,12 +764,12 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
   .card{ width:46px;height:66px;margin-left:-14px }
   #actions{
     left:0;right:0;bottom:0;transform:none;width:100%;border-radius:0;
-    padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));
+    padding:5px 8px calc(5px + env(safe-area-inset-bottom,0px));
     gap:5px;flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;
     scrollbar-width:none;-webkit-overflow-scrolling:touch;
   }
   #actions::-webkit-scrollbar{ display:none }
-  .act{ min-width:66px;flex:0 0 auto;padding:8px 10px 9px;font-size:12.5px }
+  .act{ min-width:66px;flex:0 0 auto;padding:7px 10px 8px;font-size:12.5px }
   #toasts{ top:94px }
   #chatWrap{ bottom:calc(188px + env(safe-area-inset-bottom,0px));width:200px }
   #chatLog{ max-height:14vh }
@@ -761,7 +782,7 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
    ---------------------------------------------------------- */
 @media (max-width:700px){
   :root{
-    --barH:58px;      /* action bar */
+    --barH:52px;      /* action bar */
     --handH:74px;     /* your cards */
     --railH:56px;     /* player strip: name, score, and the road/army badges */
     --safe:env(safe-area-inset-bottom,0px);
@@ -785,12 +806,12 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
   #actions{
     left:0;right:0;bottom:0;transform:none;width:100%;border-radius:0;
     border-left:none;border-right:none;border-bottom:none;
-    padding:5px 6px calc(5px + var(--safe));
+    padding:4px 6px calc(4px + var(--safe));
     gap:5px;flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;
     scrollbar-width:none;-webkit-overflow-scrolling:touch;
   }
   #actions::-webkit-scrollbar{ display:none }
-  .act{ min-width:60px;flex:0 0 auto;padding:8px 9px 9px;font-size:12px;letter-spacing:.03em }
+  .act{ min-width:60px;flex:0 0 auto;padding:7px 9px 8px;font-size:12px;letter-spacing:.03em }
   .act .cost s{ width:6px;height:6px }
 
   #hand{
@@ -871,7 +892,7 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
 
 /* ---------- anything without a mouse ---------- */
 @media (hover:none){
-  .act{ min-height:46px }
+  .act{ min-height:42px }
   .seatOpt{ min-height:46px;min-width:48px }
   .step{ width:38px;height:34px;font-size:18px }
   #trayX{ width:40px;height:40px;font-size:20px;top:6px;right:7px }
@@ -1035,6 +1056,10 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
           <input type="checkbox" id="playUnlimited">
           <span>Unlimited development cards — the deck never runs out</span>
         </label>
+        <label class="optRow">
+          <input type="checkbox" id="playRemovals">
+          <span>Removal extension — pay victory point cards and resources to tear down a rival's road, settlement or city</span>
+        </label>
         <div class="q" style="margin-top:14px">WHO PLAYS THE OTHER SEATS?</div>
         <div id="modePick"></div>
       </div>
@@ -1075,6 +1100,10 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
         <label class="optRow">
           <input type="checkbox" id="hostUnlimited">
           <span>Unlimited development cards — the deck never runs out</span>
+        </label>
+        <label class="optRow">
+          <input type="checkbox" id="hostRemovals">
+          <span>Removal extension — pay victory point cards and resources to tear down a rival's road, settlement or city</span>
         </label>
 
         <div class="secHead" style="margin-top:18px">WHO CAN JOIN</div>
@@ -1422,6 +1451,9 @@ const G = {
   autoRoll: false,            // host-selected game option
   turnSeconds: 0,             // host-selected inactivity timeout (0 = off)
   unlimitedDevs: false,       // host-selected: the development deck never runs out
+  removals: false,            // host-selected: the removal extension is on
+  removalSeq: 0,              // counts removals, so every screen can tell of a new one
+  recentRemovals: [],         // the last few { seq, by, victim, what }, newest last
   forceRoll: 0,               // debug panel: pin the next dice total
   vote: null                  // { target, yes:[], no:[], ends } while a skip vote runs
 };
@@ -1461,6 +1493,7 @@ function newGame(nPlayers, seed, initialWinVP = defaultWinVP(nPlayers), unlimite
   G.rollSeq = 0; G.rollBy = -1; G.awaitRobber = -1; G.turnEndsAt = 0;
   G.robberReturn = 'main'; G.vote = null; G.forceRoll = 0;
   G.autoRoll = false; G.turnSeconds = 0;
+  G.removals = false; G.removalSeq = 0; G.recentRemovals = [];
   G.discardDue = {};
 
   // Two passes round the table in the same direction, matching normal turn
@@ -1606,7 +1639,8 @@ function recomputeLongest(){
   if (best < 5){ G.longestOwner = -1; G.longestLen = 0; return; }
   // the incumbent keeps the card on a tie, including after a route is cut
   if (G.longestOwner !== -1 && lens[G.longestOwner] === best){ G.longestLen = best; return; }
-  if (lens.filter(l => l === best).length > 1 && G.longestOwner === -1){
+  // a tie for the lead that the incumbent is not part of sets the card aside
+  if (lens.filter(l => l === best).length > 1){
     G.longestOwner = -1; G.longestLen = 0; return;
   }
   G.longestOwner = bestPid; G.longestLen = best;
@@ -1877,6 +1911,7 @@ function runCommand(raw){
       const seat = seatByName(args[0]);
       if (seat < 0 || seat === NET.seat){ log('try /kick sam'); return; }
       G.players[seat].bot = true;
+      if (NET.seats?.[seat]) NET.seats[seat].uid = null;   // its intents stop at once
       if (NET.fb && isOnline())
         NET.fb.update(NET.fb.ref(NET.db, `rooms/${NET.code}/seats/${seat}`), { uid:null });
       log(`${nameOf(seat)}'s seat was freed`);
@@ -1955,6 +1990,100 @@ function consumeDev(pid, card){
   G.devPlayed = true;
 }
 
+/* ---- removal extension ---- */
+
+// With the extension on, a player can tear down a rival's piece by force. The
+// price goes to the bank: victory point cards back into the deck, resources
+// out of play.
+const REMOVAL = {
+  road:       { vp:1, cost:{ lumber:3, brick:3 } },
+  settlement: { vp:2, cost:{ lumber:3, brick:3, wool:3, grain:3 } },
+  city:       { vp:4, cost:{ grain:6, ore:9 } }
+};
+const REMOVE_REACH = 3;    // most legs from one of your buildings to the target
+const removalRule = what => Object.prototype.hasOwnProperty.call(REMOVAL, what) ? REMOVAL[what] : null;
+
+// Why this seat cannot remove anything right now, or null if it can.
+function removalBlocked(pid){
+  if (!G.removals) return 'The removal extension is off for this game.';
+  if (G.phase !== 'main' || pid !== G.turn) return 'Remove only on your own turn, after the roll.';
+  if (robberOwed()) return 'Settle the seven first — discards and the robber move.';
+  if (G.pending) return 'Finish the card you are playing first.';
+  if (G.freeRoads > 0) return 'Place your free roads first.';
+  if (G.offer) return 'Close your trade offer first.';
+  return null;
+}
+function canAffordRemoval(p, what){
+  const rule = removalRule(what);
+  if (!rule) return false;
+  if (ADMIN_FREE()) return true;
+  return p.vpCards >= rule.vp && canAfford(p, rule.cost);
+}
+// Counts legs (hex sides) along the board, ignoring who owns them.
+function buildingWithin(vid, pid, legs){
+  const seen = new Set([vid]);
+  let ring = [vid];
+  for (let d = 1; d <= legs && ring.length; d++){
+    const next = [];
+    for (const a of ring) for (const b of verts[a].adj){
+      if (seen.has(b)) continue;
+      seen.add(b); next.push(b);
+      if (verts[b].building && verts[b].owner === pid) return true;
+    }
+    ring = next;
+  }
+  return false;
+}
+// A road is only open to removal where it touches one of your own roads.
+function isRemovalTarget(pid, what, id){
+  if (what === 'road'){
+    const e = edges[id];
+    if (!e || e.road < 0 || e.road === pid) return false;
+    return e.v.some(vid => verts[vid].edges.some(o => o !== id && edges[o].road === pid));
+  }
+  const v = verts[id];
+  if (!v || v.building !== what || v.owner < 0 || v.owner === pid) return false;
+  return buildingWithin(id, pid, REMOVE_REACH);
+}
+function removalTargets(pid, what){
+  return (what === 'road' ? edges : verts)
+    .filter(x => isRemovalTarget(pid, what, x.id)).map(x => x.id);
+}
+function canRemove(pid, what, id){
+  const p = G.players[pid];
+  return !!p && !!removalRule(what) && Number.isInteger(id) && !removalBlocked(pid)
+      && canAffordRemoval(p, what) && isRemovalTarget(pid, what, id);
+}
+// Applies the removal. The caller has already checked canRemove.
+function removePiece(pid, what, id){
+  const rule = REMOVAL[what], p = G.players[pid];
+  if (!ADMIN_FREE()){
+    pay(p, rule.cost);
+    p.vpCards -= rule.vp;
+    for (let i = 0; i < rule.vp; i++) G.devDeck.splice(ri(G.devDeck.length + 1), 0, 'victory');
+  }
+  let victim;
+  if (what === 'road'){
+    victim = edges[id].road;
+    edges[id].road = -1;
+    G.players[victim].stock.road++;
+  } else {
+    const v = verts[id];
+    victim = v.owner;
+    v.building = null; v.owner = -1;
+    const q = G.players[victim];
+    q.stock[what]++;
+    // a dock belongs to whoever still has a building on it
+    q.ports = new Set(verts.filter(u => u.owner === victim && u.port).map(u => u.port));
+  }
+  const before = G.longestOwner;
+  recomputeLongest();
+  G.removalSeq = (G.removalSeq || 0) + 1;
+  // kept short: enough for a screen that missed a snapshot or two to catch up
+  G.recentRemovals = [...(G.recentRemovals || []), { seq:G.removalSeq, by:pid, victim, what }].slice(-5);
+  return { victim, roadBefore:before, roadAfter:G.longestOwner };
+}
+
 /* ---- turn flow ---- */
 
 function rollDice(){
@@ -2026,6 +2155,8 @@ function serializeState(){
     rollSeq: G.rollSeq, rollBy: G.rollBy,
     awaitRobber: G.awaitRobber, robberReturn: G.robberReturn, turnEndsAt: G.turnEndsAt,
     autoRoll: G.autoRoll, turnSeconds: G.turnSeconds, unlimitedDevs: !!G.unlimitedDevs,
+    removals: !!G.removals, removalSeq: G.removalSeq || 0,
+    recentRemovals: (G.recentRemovals || []).map(r => ({ ...r })),
     vote: G.vote ? { target:G.vote.target, yes:G.vote.yes.slice(),
                      no:G.vote.no.slice(), ends:G.vote.ends } : null,
     discardDue: { ...G.discardDue },
@@ -2083,6 +2214,10 @@ function applyState(snap){
   G.autoRoll = !!snap.autoRoll;
   G.turnSeconds = snap.turnSeconds || 0;
   G.unlimitedDevs = !!snap.unlimitedDevs;
+  G.removals = !!snap.removals;
+  G.removalSeq = snap.removalSeq || 0;
+  G.recentRemovals = (snap.recentRemovals || []).filter(Boolean)
+    .map(r => ({ seq:r.seq || 0, by:r.by ?? -1, victim:r.victim ?? -1, what:r.what || 'road' }));
   G.vote = snap.vote
     ? { target:snap.vote.target, yes:(snap.vote.yes||[]).slice(),
         no:(snap.vote.no||[]).slice(), ends:snap.vote.ends || 0 }
@@ -2722,6 +2857,7 @@ const SEAT_MAT = SEATS.map(s => new THREE.MeshPhysicalMaterial({
 
 const M_OK   = new THREE.MeshBasicMaterial({ color:0x6fdc8c, transparent:true, opacity:0.5 });
 const M_HOT  = new THREE.MeshBasicMaterial({ color:0xffe27a, transparent:true, opacity:0.92 });
+const M_DEL  = new THREE.MeshBasicMaterial({ color:0xe0412e, transparent:true, opacity:0.78 });
 
 /* ---------- static furniture ---------- */
 const BOARD_SPAN = R*Math.sqrt(3)*(BOARD_R + 0.5);
@@ -2917,7 +3053,7 @@ function buildBoardMeshes(){
     const n = new THREE.Mesh(vGeo, M_OK);
     n.position.set(v.x, TOP + 0.07, v.z);
     n.visible = false;
-    n.userData = { kind:'vertex', id:v.id };
+    n.userData = { kind:'vertex', id:v.id, baseY:n.position.y };
     gNodes.add(n); vertexNodes[v.id] = n;
   }
   const eGeo = new THREE.BoxGeometry(1, 0.1, edgeW);
@@ -2927,7 +3063,7 @@ function buildBoardMeshes(){
     n.rotation.y = alignY(e.angle);
     n.scale.x = e.len * 0.62;
     n.visible = false;
-    n.userData = { kind:'edge', id:e.id };
+    n.userData = { kind:'edge', id:e.id, baseY:n.position.y };
     gNodes.add(n); edgeNodes[e.id] = n;
   }
 }
@@ -2967,6 +3103,22 @@ function addBuildingMesh(vid, pid, kind){
   m.userData = { building:vid };
   gPieces.add(m);
   return m;
+}
+
+// A removed piece's meshes are picked before the hand reaches for them, so a
+// piece placed on the same spot while the gesture plays is left alone.
+function piecesAt(what, id){
+  return gPieces.children.filter(c =>
+    what === 'road' ? c.userData.road === id : c.userData.building === id);
+}
+function shrinkAway(doomed){
+  for (const m of doomed){
+    const s0 = m.scale.x;
+    tween(0.32, k => m.scale.setScalar(Math.max(0.001, s0 * (1 - k))), () => {
+      gPieces.remove(m);
+      if (m.geometry && !m.geometry.userData.shared) m.geometry.dispose?.();
+    });
+  }
 }
 
 
@@ -3647,7 +3799,7 @@ function missing(p, cost){
 
 /* ---------- the rules, shared by the menu and the in-game sheet ---------- */
 
-function rulesHTML(target = WIN_VP){
+function rulesHTML(target = WIN_VP, removals = G.removals){
   const chips = c => Object.entries(c)
     .flatMap(([r,n]) => Array(n).fill(`<s style="background:${COST_DOT[r]}"></s>`)).join('');
   const row = (name, cost, desc) =>
@@ -3697,6 +3849,16 @@ function rulesHTML(target = WIN_VP){
   <p>Nobody collects. Anyone holding <b>more than 7 cards discards half</b>. Then the roller
      moves the robber onto any tile — that tile produces nothing until it moves again — and
      steals a card from someone building there.</p>
+${removals ? `
+  <h3>Removal extension</h3>
+  <p>On your turn, after the roll, you may pay the bank to tear down a rival's piece. The owner
+     does not have to agree. Victory point cards go back into the deck; the piece goes back to
+     its owner's supply.</p>
+  ${row('Road', REMOVAL.road.cost, `Plus ${REMOVAL.road.vp} victory point card. The road must touch one of your own roads.`)}
+  ${row('Settlement', REMOVAL.settlement.cost, `Plus ${REMOVAL.settlement.vp} victory point cards. One of your buildings must be at most ${REMOVE_REACH} legs (hex sides) away.`)}
+  ${row('City', REMOVAL.city.cost, `Plus ${REMOVAL.city.vp} victory point cards. Same distance rule as a settlement.`)}
+  <p>Longest Road and everyone's score are worked out again at once. Roads and buildings left
+     behind stay where they are, even if they no longer connect.</p>` : ''}
 
   <h3>Getting around</h3>
   <p>${IS_TOUCH
@@ -3713,7 +3875,7 @@ function actBtn(spec){
   const p = cur();
   const b = document.createElement('button');
   const enabled = spec.enabled !== false && !spec.why;
-  b.className = 'act' + (spec.primary?' primary':'') + (spec.armed?' armed':'');
+  b.className = 'act' + (spec.primary?' primary':'') + (spec.armed?' armed':'') + (spec.danger?' danger':'');
   b.innerHTML = `<span>${spec.label}</span>` + (spec.cost ? costChips(spec.cost, p) : '');
   b.disabled = !enabled;
   if (enabled) b.onclick = spec.on;
@@ -3809,6 +3971,16 @@ function actionSpecs(){
     what:'Upgrades a settlement so it collects 2 resources instead of 1. Worth 2 points.',
     on:()=>armPlacement('city') });
 
+  if (G.removals){
+    const removing = mode?.type === 'remove';
+    list.push({
+      label:'REMOVE', armed: removing, danger:true,
+      why: removing ? null : (blocked || removalBlocked(p.id)),
+      what: removing ? 'Stop removing and go back to your turn.'
+        : 'Pay victory point cards and resources to tear down a rival’s road, settlement or city.',
+      on:()=> removing ? cancelMode() : openRemoveTray() });
+  }
+
   list.push({
     label:'BUY CARD', cost:COST.dev,
     why: blocked
@@ -3864,6 +4036,12 @@ function renderActions(){
 }
 
 function renderAll(){
+  // a removal still waiting for its CONFIRM does not outlive the turn or the seven
+  const pendingPid = $('tray')._removalPid;      // read by id: renderAll can run before `tray` is set
+  if (pendingPid >= 0 && removalBlocked(pendingPid)){
+    closeTray();
+    if (mode?.type === 'remove'){ mode = null; clearNodes(); }
+  }
   renderTurn(); renderPlayers(); renderHand(); renderActions(); refreshCards(); paintHint();
   renderAdmin();
   syncDiscardUI();    // your own discard, never anybody else's
@@ -3987,7 +4165,9 @@ addEventListener('keydown', e => {
 
   if (e.key === 'Escape'){
     if (typing){ e.target.blur(); return; }
-    closeHelp(); dismissTray();
+    closeHelp();
+    // one press closes an open tray; the placement under it stays armed
+    if (!tray.classList.contains('hide')){ dismissTray(); return; }
     if (mode && mode.cancel) cancelMode();
     return;
   }
@@ -4012,16 +4192,26 @@ addEventListener('keydown', e => {
 
 let mode = null;
 
-function showNodes(kind, ids){
-  for (const n of vertexNodes) n.visible = false;
-  for (const n of edgeNodes) n.visible = false;
+// `lift` raises each marker above the piece already standing there, so a
+// removal target stays visible and tappable on top of a road or building.
+function showNodes(kind, ids, mat = M_OK, lift = null){
+  clearNodes();
   const arr = kind==='vertex' ? vertexNodes : edgeNodes;
-  for (const id of ids){ arr[id].visible = true; arr[id].material = M_OK; }
+  for (const id of ids){
+    const n = arr[id];
+    n.visible = true; n.material = mat;
+    if (lift){
+      n.position.y = n.userData.baseY + lift(id);
+      if (kind === 'vertex') n.scale.set(1.3, 1, 1.3);
+    }
+  }
 }
 function clearNodes(){
-  for (const n of vertexNodes) n.visible = false;
-  for (const n of edgeNodes) n.visible = false;
+  for (const n of vertexNodes){ n.visible = false; n.position.y = n.userData.baseY; n.scale.set(1, 1, 1); }
+  for (const n of edgeNodes){ n.visible = false; n.position.y = n.userData.baseY; }
 }
+// the colour a marker goes back to once the pointer leaves it
+const nodeMat = () => mode?.type === 'remove' ? M_DEL : M_OK;
 
 // Every placement mode explains itself, especially roads — people expect them
 // to sit on tiles rather than in the grooves between them.
@@ -4039,14 +4229,19 @@ const MODE_COPY = {
     : { title:'Lay a road',
         sub:'Roads sit in the groove between two tiles. Each must connect to a road or building you already own.' },
   robber: () => ({ title:'Move the robber',
-    sub:'Click any hex except the one it sits on. That tile stops producing, and you steal a card from someone building there.' })
+    sub:'Click any hex except the one it sits on. That tile stops producing, and you steal a card from someone building there.' }),
+  remove: what => what === 'road'
+    ? { title:'Choose a rival road to remove',
+        sub:'Red bars mark rival roads that touch one of your roads. You confirm the payment next.' }
+    : { title:`Choose a rival ${what} to remove`,
+        sub:`Red discs mark rival ${what === 'city' ? 'cities' : 'settlements'} at most ${REMOVE_REACH} legs from one of your buildings. You confirm the payment next.` }
 };
 
 function armPlacement(type, opts={}){
   if (mode && mode.type === type && !opts.forced){ cancelMode(); return; }
   const pid = opts.pid ?? G.turn;
   const setup = !!opts.setup;
-  const copy = MODE_COPY[type](setup);
+  const copy = MODE_COPY[type](type === 'remove' ? opts.what : setup);
   let ids = [], kind = 'vertex';
 
   if (type === 'settlement'){
@@ -4057,6 +4252,10 @@ function armPlacement(type, opts={}){
     kind = 'edge';
     ids = edges.filter(e=>canPlaceRoad(e.id,pid,{setup, fromVertex:opts.fromVertex,
                                                  free:G.freeRoads>0})).map(e=>e.id);
+  } else if (type === 'remove'){
+    if (removalBlocked(pid) || !canAffordRemoval(G.players[pid], opts.what)){ cancelMode(); return; }
+    kind = opts.what === 'road' ? 'edge' : 'vertex';
+    ids = removalTargets(pid, opts.what);
   } else if (type === 'robber'){
     clearNodes();
     mode = { type, pid, title:copy.title, sub:copy.sub, cancel:false };
@@ -4065,9 +4264,11 @@ function armPlacement(type, opts={}){
   }
 
   if (!ids.length){ cancelMode(); return; }
-  mode = { type, pid, setup, kind, ids:new Set(ids),
+  mode = { type, pid, setup, kind, ids:new Set(ids), what:opts.what,
            title:copy.title, sub:copy.sub, onDone:opts.onDone, cancel:!setup };
-  showNodes(kind, ids);
+  if (type === 'remove')
+    showNodes(kind, ids, M_DEL, id => kind === 'edge' ? 0.2 : verts[id].building === 'city' ? 1.3 : 0.95);
+  else showNodes(kind, ids);
   renderAll();
 }
 
@@ -4269,6 +4470,8 @@ function onClick(){
   if (!mode.ids?.has(ud.id)) return;
 
   const pid = mode.pid;
+  // a removal is expensive, so it always asks first; the tray does the rest
+  if (mode.type === 'remove'){ confirmRemoval(pid, mode.what, ud.id); return; }
   // Online guests do not touch the board directly; the host applies the move.
   if (NET.mode === 'guest'){
     const kind = mode.type === 'road' ? 'road' : mode.type;
@@ -4311,14 +4514,23 @@ function onClick(){
    ============================================================ */
 
 const tray = $('tray');
-function closeTray(){ tray.classList.add('hide'); trayKind = null; }
+tray._removalPid = -1;          // the seat whose removal is waiting on CONFIRM
+function closeTray(){
+  tray.classList.add('hide'); trayKind = null; tray._removalPid = -1;
+  const after = tray._onClose; tray._onClose = null;
+  after?.();
+}
 // `dismissible` is false only where the rules demand an answer — discarding on
 // a seven, and choosing who to rob. Everything else closes on ✕, CLOSE,
 // a click on the backdrop, or Escape.
 function openTray(title, sub, build, confirmLabel, onConfirm, validate, dismissible = true){
   $('trayH').textContent = title;
   $('trayS').textContent = sub || '';
+  const replaced = tray._onClose; tray._onClose = null; tray._removalPid = -1;
+  replaced?.();
   const box = $('trayCards'); box.innerHTML = '';
+  // some trays stack their rows; the next one starts from the default layout
+  box.style.flexDirection = ''; box.style.alignItems = '';
   build(box);
   const go = $('trayGo');
   go.textContent = confirmLabel;
@@ -4655,6 +4867,110 @@ function playDev(card){
     renderAll();
   }
   renderAll();
+}
+
+/* ---- removal extension ---- */
+const REMOVE_RULE = {
+  road:'a rival road that touches one of your roads',
+  settlement:`a rival settlement at most ${REMOVE_REACH} legs from one of your buildings`,
+  city:`a rival city at most ${REMOVE_REACH} legs from one of your buildings`
+};
+
+function removalCostText(what){
+  const r = REMOVAL[what];
+  return [`${r.vp} VP card${r.vp > 1 ? 's' : ''}`,
+    ...Object.entries(r.cost).map(([k,n]) => `${n} ${RES_LABEL[k].toLowerCase()}`)].join(' · ');
+}
+// gold rounds are victory point cards; a faded chip is one you do not hold yet
+function removalChips(what, p, withText = true){
+  const r = REMOVAL[what];
+  const vp = Array.from({length:r.vp}, (_,i) =>
+    `<s class="vp${p.vpCards <= i ? ' lack' : ''}" title="VICTORY POINT CARD"></s>`);
+  const res = Object.entries(r.cost).flatMap(([k,n]) => Array.from({length:n}, (_,i) =>
+    `<s class="${p.res[k] <= i ? 'lack' : ''}" style="background:${COST_DOT[k]}" title="${RES_LABEL[k]}"></s>`));
+  return `<span class="rmCost">${vp.join('')}${res.join('')}${withText ? `<i>${removalCostText(what)}</i>` : ''}</span>`;
+}
+function removalWhyNot(p, what){
+  const r = REMOVAL[what];
+  const short = r.vp - p.vpCards;
+  if (!ADMIN_FREE() && short > 0) return `NEED ${short} MORE VP CARD${short > 1 ? 'S' : ''}`;
+  if (!canAffordRemoval(p, what)) return 'NOT ENOUGH RESOURCES';
+  if (!removalTargets(p.id, what).length) return 'NOTHING IN REACH';
+  return null;
+}
+
+// Step 1: pick what kind of piece to remove.
+function openRemoveTray(){
+  const p = cur();
+  if (removalBlocked(p.id)){ renderAll(); return; }
+  openTray('Remove a rival piece',
+    `you hold ${p.vpCards} victory point card${p.vpCards === 1 ? '' : 's'} · paid to the bank`,
+    box => {
+      box.style.flexDirection = 'column';
+      box.style.alignItems = 'stretch';
+      for (const what of Object.keys(REMOVAL)){
+        const no = removalWhyNot(p, what);
+        const row = document.createElement('button');
+        row.className = 'rmRow';
+        row.disabled = !!no;
+        row.innerHTML = `
+          <span class="top"><span class="nm">${what.toUpperCase()}</span>
+            <span class="st">${no || 'CHOOSE →'}</span></span>
+          <span class="ds">Tear down ${REMOVE_RULE[what]}.</span>
+          ${removalChips(what, p)}`;
+        if (!no) row.onclick = ()=>{ closeTray(); armPlacement('remove', { what, forced:true }); };
+        box.appendChild(row);
+      }
+    },
+    'CLOSE', ()=>{ closeTray(); renderAll(); }, null);
+}
+
+// Step 2: a target was tapped. Name it and the price before anything is paid.
+function confirmRemoval(pid, what, id){
+  if (!canRemove(pid, what, id)){ cancelMode(); return; }
+  const p = G.players[pid];
+  const owner = what === 'road' ? edges[id].road : verts[id].owner;
+  const q = G.players[owner];
+  const node = (what === 'road' ? edgeNodes : vertexNodes)[id];
+  if (node) node.material = M_HOT;
+  const lost = what === 'city' ? 2 : what === 'settlement' ? 1 : 0;
+  openTray(`Remove ${q.name}'s ${what}?`, 'paid to the bank · this cannot be undone', box => {
+    box.style.flexDirection = 'column';
+    box.style.alignItems = 'stretch';
+    box.innerHTML = `
+      <div class="rmNote">You pay <b>${removalCostText(what)}</b>. The victory point cards
+        go back into the deck, so your score drops by ${REMOVAL[what].vp}.
+        ${lost ? `${esc(q.name)} loses the ${lost} point${lost > 1 ? 's' : ''} it was worth. ` : ''}
+        Longest Road is worked out again.</div>
+      ${removalChips(what, p, false)}`;
+  }, 'REMOVE', ()=>{
+    closeTray();
+    if (!canRemove(pid, what, id)){ cancelMode(); return; }
+    mode = null; clearNodes();
+    if (NET.mode === 'guest'){ sendIntent('remove', { what, id }); renderAll(); return; }
+    doRemove(pid, what, id);
+  }, ()=>canRemove(pid, what, id));
+  // closing without confirming leaves the other targets up to pick from
+  tray._onClose = () => { if (node && mode?.type === 'remove') node.material = M_DEL; };
+  tray._removalPid = pid;
+}
+
+// Host and local play only: apply it, then show it.
+function doRemove(pid, what, id){
+  if (!canRemove(pid, what, id)){ renderAll(); return false; }
+  noteTurnActivity(pid);
+  const at = what === 'road' ? edges[id] : verts[id];
+  const doomed = piecesAt(what, id);
+  const out = removePiece(pid, what, id);
+  reachFor(pid, at.x, at.z, () => shrinkAway(doomed));
+  announce(pid, `tore down ${esc(G.players[out.victim].name)}'s ${what}`, removalCostText(what));
+  if (out.roadAfter !== out.roadBefore){
+    if (out.roadAfter >= 0) announce(out.roadAfter, 'takes Longest Road', `${G.longestLen} roads`);
+    else log('Longest Road is set aside — nobody holds it now');
+  }
+  if (checkWin()){ announceWin(); return true; }
+  renderAll();
+  return true;
 }
 
 /* ============================================================
@@ -5274,6 +5590,7 @@ let hostWinVPCustom = false;
 let hostAutoRoll = false;
 let hostTimeout = false;
 let hostUnlimited = false;
+let hostRemovals = false;
 
 // A small helper so every choice row in the menu behaves the same way.
 function pickerRow(host, options, current, onPick){
@@ -5345,6 +5662,11 @@ function wireOnlineTab(){
     hostUnl.checked = hostUnlimited;
     hostUnl.onchange = ()=>{ hostUnlimited = !!hostUnl.checked; };
   }
+  const hostRem = $('hostRemovals');
+  if (hostRem){
+    hostRem.checked = hostRemovals;
+    hostRem.onchange = ()=>{ hostRemovals = !!hostRem.checked; };
+  }
 
   const grab = () => $('joinName').value;
   $('hostBtn').onclick = async ()=>{
@@ -5352,7 +5674,7 @@ function wireOnlineTab(){
     hostWinVP = readTargetInput('hostTarget', fallback);
     hostWinVPCustom = hostWinVP !== fallback;
     $('hostErr').textContent = 'creating…';
-    try { await netHost(hostSeatCount, grab(), hostPublic, hostWinVP, hostWinVPCustom, hostAutoRoll, hostTimeout, hostUnlimited); $('hostErr').textContent = ''; }
+    try { await netHost(hostSeatCount, grab(), hostPublic, hostWinVP, hostWinVPCustom, hostAutoRoll, hostTimeout, hostUnlimited, hostRemovals); $('hostErr').textContent = ''; }
     catch(e){ console.error('[harbour/net]', e); $('hostErr').textContent = netExplain(e); }
   };
   $('joinBtn').onclick = async ()=>{
@@ -5407,6 +5729,7 @@ let playWinVP = defaultWinVP(seatCount);
 let playAutoRoll = false;
 let playTimeout = false;
 let playUnlimited = false;
+let playRemovals = false;
 let menuPane = 'play';
 {
   const seatOpts = Array.from({length:MAX_SEATS-1}, (_,i)=>[String(i+2), i+2]);
@@ -5430,6 +5753,11 @@ let menuPane = 'play';
     playUnl.checked = playUnlimited;
     playUnl.onchange = ()=>{ playUnlimited = !!playUnl.checked; };
   }
+  const playRem = $('playRemovals');
+  if (playRem){
+    playRem.checked = playRemovals;
+    playRem.onchange = ()=>{ playRemovals = !!playRem.checked; };
+  }
 }
 
 // ---- tab switching ----
@@ -5440,7 +5768,8 @@ for (const t of Array.from(document.querySelectorAll?.('.tab') || [])){
       x.classList.toggle('on', x.id === 'pane-' + t.dataset.pane);
     if (t.dataset.pane === 'how') $('menuRules').innerHTML = rulesHTML(
       readTargetInput(menuPane === 'host' ? 'hostTarget' : 'playTarget',
-        menuPane === 'host' ? hostWinVP : playWinVP));
+        menuPane === 'host' ? hostWinVP : playWinVP),
+      menuPane === 'host' ? hostRemovals : playRemovals);
     else menuPane = t.dataset.pane;
     showIdentity(t.dataset.pane);
     if (t.dataset.pane === 'join' && netConfigured())
@@ -5460,6 +5789,7 @@ $('startBtn').onclick = ()=>{
   newGame(seatCount, undefined, playWinVP, playUnlimited);
   G.autoRoll = !!playAutoRoll;
   G.turnSeconds = playTimeout ? 30 : 0;
+  G.removals = !!playRemovals;
   // seat 0 is always you; the rest are bots unless you asked for pass & play
   for (const p of G.players) p.bot = vsBots && p.id !== 0;
   buildBoardMeshes();
@@ -5468,6 +5798,7 @@ $('startBtn').onclick = ()=>{
   log(vsBots
     ? `A fresh board for ${seatCount}. You are ${G.players[0].name}; the rest are bots.`
     : `A fresh board for ${seatCount}. Pass the mouse along each turn.`, true);
+  if (G.removals) log('The <b>removal extension</b> is on — see RULES for the prices.');
   renderDie($('d0'),0); renderDie($('d1'),0); $('diceSum').textContent='';
   renderAll();
   runSetup();
@@ -5568,7 +5899,7 @@ async function netBoot(){
 
 // Online tables are people only. Seats stay open until somebody claims them,
 // and the game starts with exactly whoever turned up.
-async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCount), customWinVP=false, autoRoll=false, timeout=false, unlimited=false){
+async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCount), customWinVP=false, autoRoll=false, timeout=false, unlimited=false, removals=false){
   const fb = await netBoot();
   NET.mode = 'host';
   NET.seat = 0;
@@ -5581,11 +5912,13 @@ async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCou
   hostAutoRoll = !!autoRoll;
   hostTimeout = !!timeout;
   hostUnlimited = !!unlimited;
+  hostRemovals = !!removals;
 
   botStop();
   newGame(seatCount, undefined, hostWinVP, hostUnlimited);
   G.autoRoll = hostAutoRoll;
   G.turnSeconds = hostTimeout ? 30 : 0;
+  G.removals = hostRemovals;
   G.players.forEach(p => { p.bot = false; });
   G.players[0].name = NET.myName;
 
@@ -5682,6 +6015,10 @@ async function netJoin(code, name){
       if (rebuilt){ buildBoardMeshes(); buildSeats(G.players.length); }
       syncMeshesToState();
       renderAll();
+      // the lobby names the host's game options, which arrive with the state
+      if (lobbyRemovals !== G.removals && !$('modal').classList.contains('hide')){
+        lobbyRemovals = G.removals; renderLobby();
+      }
       guestTick();
       NET.lastSync = Date.now();
       netStatus('');
@@ -5723,6 +6060,7 @@ async function netJoin(code, name){
 // write, backgrounded tab, flaky wifi — repairs itself on the next beat instead
 // of staying wrong for the rest of the game.
 let heartbeat = null;
+let lobbyRemovals = null;      // the removal option the guest's lobby last showed
 function startHeartbeat(){
   clearInterval(heartbeat);
   heartbeat = setInterval(()=>{
@@ -5762,6 +6100,8 @@ function hostApplyIntent(it){
   if (NET.mode !== 'host') return;
   const seat = it.seat;
   if (typeof seat !== 'number' || !G.players[seat]) return;
+  // the seat named in an intent must be the sender's own
+  if (!it.uid || !NET.seats?.[seat] || NET.seats[seat].uid !== it.uid) return;
   if (G.phase === 'over') return;
   // only the seat whose turn it is, except the things everyone answers at once:
   // discarding on a seven, and replying to a trade offer
@@ -5906,6 +6246,9 @@ function hostApplyIntent(it){
     case 'cancelOffer':
       if (G.offer && G.offer.from === seat){ noteTurnActivity(seat); G.offer = null; }
       break;
+    case 'remove':
+      doRemove(seat, it.what, it.id);
+      return;                       // doRemove already renders and checks for a win
     case 'end':
       doEndTurn();
       return;                       // doEndTurn already renders and pushes
@@ -6039,6 +6382,7 @@ function resolveVote(){
 }
 
 // Guests have no game loop of their own; every prompt comes off the snapshot.
+let seenRemoval = -1;
 function guestTick(){
   if (NET.mode !== 'guest') return;
 
@@ -6048,6 +6392,19 @@ function guestTick(){
     renderDie($('d0'), G.dice[0]); renderDie($('d1'), G.dice[1]);
     $('diceSum').textContent = G.lastRoll;
     showRoll(G.rollBy, G.dice[0], G.dice[1]);
+  }
+
+  // a removal we have not shown yet; the first snapshot only catches up
+  if (G.removalSeq !== seenRemoval){
+    const since = seenRemoval;
+    seenRemoval = G.removalSeq;
+    if (since >= 0 && G.removalSeq > since){
+      for (const r of G.recentRemovals){
+        if (r.seq <= since || !G.players[r.by] || !G.players[r.victim] || !removalRule(r.what)) continue;
+        announce(r.by, `tore down ${esc(G.players[r.victim].name)}'s ${r.what}`,
+          r.victim === NET.seat ? 'yours' : removalCostText(r.what));
+      }
+    }
   }
 
   // A snapshot sent before the host saw our robber click re-arms the prompt;
@@ -6078,6 +6435,15 @@ function guestTick(){
     return;
   }
   if (G.turn !== NET.seat){ if (mode) cancelMode(); return; }
+  if (mode?.type === 'remove'){
+    if (removalBlocked(NET.seat) || !canAffordRemoval(G.players[NET.seat], mode.what)) cancelMode();
+    else {
+      // a snapshot can take a target away, or add one; redraw the markers to match
+      const now = removalTargets(NET.seat, mode.what);
+      const changed = now.length !== mode.ids.size || now.some(id => !mode.ids.has(id));
+      if (changed && !(tray._removalPid >= 0)) armPlacement('remove', { what:mode.what, forced:true });
+    }
+  }
   if (G.freeRoads > 0){ armPlacement('road', { forced:true }); return; }
   if (G.phase === 'main' && mode && mode.type === 'road' && !canPlaceRoad(
       [...mode.ids][0], NET.seat, {})) cancelMode();
@@ -6302,6 +6668,7 @@ function renderLobby(){
       ? `<div class="codeBox"><span>PUBLIC TABLE</span><b>OPEN</b></div>`
       : `<div class="codeBox"><span>PRIVATE — SHARE THIS CODE</span><b>${NET.code || '----'}</b></div>`}
     ${listing}
+    ${G.removals ? '<div class="listOk">removal extension on — rivals can pay to tear pieces down</div>' : ''}
     <div class="lobbyList">${idx.map(i => {
       const sv = seats[i] || {};
       const here = !!sv.uid;
@@ -6339,11 +6706,13 @@ async function netStartGame(){
   here.forEach((h, i) => { compact[i] = { uid:h.uid, name:h.name }; });
   const autoRoll = !!G.autoRoll;
   const turnSeconds = G.turnSeconds || 0;
+  const removals = !!G.removals;
 
   botStop();
   newGame(here.length, G.seed, hostWinVPCustom ? hostWinVP : defaultWinVP(here.length), G.unlimitedDevs);
   G.autoRoll = autoRoll;
   G.turnSeconds = turnSeconds;
+  G.removals = removals;
   G.players.forEach((p, i) => { p.bot = false; p.name = here[i].name; });
   NET.seat = here.findIndex(h => h.uid === NET.uid);
   NET.seats = compact;
@@ -6360,6 +6729,7 @@ async function netStartGame(){
   buildBoardMeshes(); buildSeats(here.length);
   elToasts.innerHTML = '';
   log(`Room ${NET.code} — ${here.map(h=>h.name).join(', ')}.`, true);
+  if (G.removals) log('The <b>removal extension</b> is on — see RULES for the prices.');
   hostBriefing();
   renderDie($('d0'),0); renderDie($('d1'),0); $('diceSum').textContent='';
   renderAll();
@@ -6665,7 +7035,7 @@ function frame(){
     const hit = ray.intersectObjects(pickTargets(), false)[0];
     const obj = hit?.object || null;
     if (obj !== hover){
-      if (hover && hover.userData.kind !== 'tile') hover.material = M_OK;
+      if (hover && hover.userData.kind !== 'tile') hover.material = nodeMat();
       hover = obj;
       if (hover && hover.userData.kind !== 'tile') hover.material = M_HOT;
     }
@@ -6673,7 +7043,7 @@ function frame(){
         && obj.userData.id !== G.robber) ringTile = obj.userData.id;
     document.body.style.cursor = obj ? 'pointer' : '';
   } else if (hover){
-    if (hover.userData.kind !== 'tile') hover.material = M_OK;
+    if (hover.userData.kind !== 'tile') hover.material = nodeMat();
     hover = null;
     document.body.style.cursor = '';
   }
