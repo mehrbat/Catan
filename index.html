@@ -366,10 +366,12 @@ body.tucked #railR{ display:none }
 #trayBox{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow-y:auto;
   -webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 
-/* ---------- removal extension ---------- */
+/* ---------- extension: removal and fortification ---------- */
 .rmRow{display:block;width:100%;text-align:left;padding:10px 12px;margin-bottom:6px;
   border-radius:3px;background:#5e2b22;color:#f6ebe6;border:1px solid rgba(0,0,0,.4)}
 .rmRow:disabled{background:#43302c;opacity:.6;cursor:not-allowed}
+.rmRow.fort{background:#2d4a5c}
+.rmRow.fort:disabled{background:#2f3a42}
 .rmRow .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .rmRow .nm{font-size:14px;letter-spacing:.09em}
 .rmRow .st{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;opacity:.9;text-align:right}
@@ -650,6 +652,11 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
 
 .optRow{display:flex;align-items:center;gap:9px;padding:7px 2px;text-align:left;
   font-size:13.5px;letter-spacing:.03em;cursor:pointer}
+/* the parts of one game option, listed under its checkbox */
+.optList{list-style:none;margin:-3px 0 4px 33px;padding:0;text-align:left;
+  font-family:var(--mono);font-size:10.5px;line-height:1.5;color:var(--ink-soft)}
+.optList li{margin-bottom:3px}
+.optList b{color:var(--ink)}
 
 .pubRow{display:flex;align-items:center;gap:9px;padding:10px;border-radius:3px;
   background:rgba(42,32,24,.07);margin-bottom:5px;text-align:left}
@@ -1075,9 +1082,13 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
           <span>Unlimited development cards — the deck never runs out</span>
         </label>
         <label class="optRow">
-          <input type="checkbox" id="playRemovals">
-          <span>Removal extension — pay victory point cards and resources to tear down a rival's road, settlement or city</span>
+          <input type="checkbox" id="playExtension">
+          <span>Extension</span>
         </label>
+        <ul class="optList">
+          <li><b>Removal</b> — pay victory point cards and resources to tear down a rival's road, settlement or city</li>
+          <li><b>Fortification</b> — pay a piece's build cost again to shield it from one more removal</li>
+        </ul>
         <div class="q" style="margin-top:14px">WHO PLAYS THE OTHER SEATS?</div>
         <div id="modePick"></div>
       </div>
@@ -1120,9 +1131,13 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
           <span>Unlimited development cards — the deck never runs out</span>
         </label>
         <label class="optRow">
-          <input type="checkbox" id="hostRemovals">
-          <span>Removal extension — pay victory point cards and resources to tear down a rival's road, settlement or city</span>
+          <input type="checkbox" id="hostExtension">
+          <span>Extension</span>
         </label>
+        <ul class="optList">
+          <li><b>Removal</b> — pay victory point cards and resources to tear down a rival's road, settlement or city</li>
+          <li><b>Fortification</b> — pay a piece's build cost again to shield it from one more removal</li>
+        </ul>
 
         <div class="secHead" style="margin-top:18px">WHO CAN JOIN</div>
         <div id="privacyPick"></div>
@@ -1300,7 +1315,7 @@ function buildTopology(){
     const k = key(x,z);
     if (vKey.has(k)) return vKey.get(k);
     const v = { id:verts.length, x, z, tiles:[], edges:[], adj:[],
-                building:null, owner:-1, port:null };
+                building:null, owner:-1, fort:0, port:null };
     verts.push(v); vKey.set(k, v.id);
     return v.id;
   };
@@ -1308,7 +1323,7 @@ function buildTopology(){
     const k = a<b ? `${a}|${b}` : `${b}|${a}`;
     if (eKey.has(k)) return eKey.get(k);
     const va = verts[a], vb = verts[b];
-    const e = { id:edges.length, v:[a,b], tiles:[], road:-1,
+    const e = { id:edges.length, v:[a,b], tiles:[], road:-1, fort:0,
                 x:(va.x+vb.x)/2, z:(va.z+vb.z)/2,
                 angle: Math.atan2(vb.x-va.x, vb.z-va.z),
                 len: Math.hypot(vb.x-va.x, vb.z-va.z) };
@@ -1470,9 +1485,9 @@ const G = {
   autoRoll: false,            // host-selected game option
   turnSeconds: 0,             // host-selected inactivity timeout (0 = off)
   unlimitedDevs: false,       // host-selected: the development deck never runs out
-  removals: false,            // host-selected: the removal extension is on
-  removalSeq: 0,              // counts removals, so every screen can tell of a new one
-  recentRemovals: [],         // the last few { seq, by, victim, what }, newest last
+  extension: false,           // host-selected: removal and fortification are on
+  extSeq: 0,                  // counts removals and fortifications, so every screen can tell of a new one
+  recentExt: [],              // the last few { seq, kind, by, victim, what, left }, newest last
   forceRoll: 0,               // debug panel: pin the next dice total
   vote: null                  // { target, yes:[], no:[], ends } while a skip vote runs
 };
@@ -1512,7 +1527,7 @@ function newGame(nPlayers, seed, initialWinVP = defaultWinVP(nPlayers), unlimite
   G.rollSeq = 0; G.rollBy = -1; G.awaitRobber = -1; G.turnEndsAt = 0;
   G.robberReturn = 'main'; G.vote = null; G.forceRoll = 0;
   G.autoRoll = false; G.turnSeconds = 0;
-  G.removals = false; G.removalSeq = 0; G.recentRemovals = [];
+  G.extension = false; G.extSeq = 0; G.recentExt = [];
   G.discardDue = {}; G.discardEndsAt = 0;
 
   // Two passes round the table in the same direction, matching normal turn
@@ -1568,7 +1583,7 @@ function canPlaceSettlement(vid, pid, setup=false){
 function placeSettlement(vid, pid, setup=false){
   const v = verts[vid], p = G.players[pid];
   if (!setup && !ADMIN_FREE()) pay(p, COST.settlement);
-  v.building = 'settlement'; v.owner = pid;
+  v.building = 'settlement'; v.owner = pid; v.fort = 0;
   p.stock.settlement--;
   if (v.port) p.ports.add(v.port);
   recomputeLongest();
@@ -1617,7 +1632,7 @@ function canPlaceRoad(eid, pid, opts={}){
 function placeRoad(eid, pid, opts={}){
   const p = G.players[pid];
   if (!opts.setup && !opts.free && !ADMIN_FREE()) pay(p, COST.road);
-  edges[eid].road = pid;
+  edges[eid].road = pid; edges[eid].fort = 0;
   p.stock.road--;
   const before = G.longestOwner;
   recomputeLongest();
@@ -2009,7 +2024,7 @@ function consumeDev(pid, card){
   G.devPlayed = true;
 }
 
-/* ---- removal extension ---- */
+/* ---- extension: removal and fortification ---- */
 
 // With the extension on, a player can tear down a rival's piece by force. The
 // price goes to the bank: victory point cards back into the deck, resources
@@ -2017,15 +2032,23 @@ function consumeDev(pid, card){
 const REMOVAL = {
   road:       { vp:1, cost:{ lumber:3, brick:3 } },
   settlement: { vp:2, cost:{ lumber:3, brick:3, wool:3, grain:3 } },
-  city:       { vp:4, cost:{ grain:6, ore:9 } }
+  city:       { vp:3, cost:{ grain:6, ore:9 } }
 };
 const REMOVE_REACH = 3;    // most legs from one of your buildings to the target
 const removalRule = what => Object.prototype.hasOwnProperty.call(REMOVAL, what) ? REMOVAL[what] : null;
 
-// Why this seat cannot remove anything right now, or null if it can.
-function removalBlocked(pid){
-  if (!G.removals) return 'The removal extension is off for this game.';
-  if (G.phase !== 'main' || pid !== G.turn) return 'Remove only on your own turn, after the roll.';
+// An owner can fortify a piece for what the piece costs to build. Every piece
+// starts at 1× (one removal takes it down); each fortification adds one more
+// removal it can take. `fort` on a corner or edge counts the extra ones.
+const FORTIFY = { road:COST.road, settlement:COST.settlement, city:COST.city };
+const fortifyCost = what => Object.prototype.hasOwnProperty.call(FORTIFY, what) ? FORTIFY[what] : null;
+const pieceAt = (what, id) => what === 'road' ? edges[id] : verts[id];
+const fortTimes = (what, id) => 1 + (pieceAt(what, id)?.fort || 0);
+
+// Why this seat cannot use the extension right now, or null if it can.
+function extBlocked(pid, verb = 'Remove'){
+  if (!G.extension) return 'The extension is off for this game.';
+  if (G.phase !== 'main' || pid !== G.turn) return `${verb} only on your own turn, after the roll.`;
   if (robberOwed()) return 'Settle the seven first — discards and the robber move.';
   if (G.pending) return 'Finish the card you are playing first.';
   if (G.freeRoads > 0) return 'Place your free roads first.';
@@ -2070,10 +2093,17 @@ function removalTargets(pid, what){
 }
 function canRemove(pid, what, id){
   const p = G.players[pid];
-  return !!p && !!removalRule(what) && Number.isInteger(id) && !removalBlocked(pid)
+  return !!p && !!removalRule(what) && Number.isInteger(id) && !extBlocked(pid)
       && canAffordRemoval(p, what) && isRemovalTarget(pid, what, id);
 }
-// Applies the removal. The caller has already checked canRemove.
+// Every screen hears of each removal and fortification through this list.
+function noteExt(kind, by, victim, what, left){
+  G.extSeq = (G.extSeq || 0) + 1;
+  // kept short: enough for a screen that missed a snapshot or two to catch up
+  G.recentExt = [...(G.recentExt || []), { seq:G.extSeq, kind, by, victim, what, left }].slice(-5);
+}
+// Applies the removal. The caller has already checked canRemove. A fortified
+// piece only loses one fortification and stays on the board.
 function removePiece(pid, what, id){
   const rule = REMOVAL[what], p = G.players[pid];
   if (!ADMIN_FREE()){
@@ -2081,26 +2111,56 @@ function removePiece(pid, what, id){
     p.vpCards -= rule.vp;
     for (let i = 0; i < rule.vp; i++) G.devDeck.splice(ri(G.devDeck.length + 1), 0, 'victory');
   }
-  let victim;
+  const at = pieceAt(what, id);
+  const victim = what === 'road' ? at.road : at.owner;
+  const before = G.longestOwner;
+  if (at.fort > 0){
+    at.fort--;
+    noteExt('weaken', pid, victim, what, at.fort + 1);
+    return { victim, weakened:true, left:at.fort + 1, roadBefore:before, roadAfter:before };
+  }
+  at.fort = 0;
   if (what === 'road'){
-    victim = edges[id].road;
-    edges[id].road = -1;
+    at.road = -1;
     G.players[victim].stock.road++;
   } else {
-    const v = verts[id];
-    victim = v.owner;
-    v.building = null; v.owner = -1;
+    at.building = null; at.owner = -1;
     const q = G.players[victim];
     q.stock[what]++;
     // a dock belongs to whoever still has a building on it
     q.ports = new Set(verts.filter(u => u.owner === victim && u.port).map(u => u.port));
   }
-  const before = G.longestOwner;
   recomputeLongest();
-  G.removalSeq = (G.removalSeq || 0) + 1;
-  // kept short: enough for a screen that missed a snapshot or two to catch up
-  G.recentRemovals = [...(G.recentRemovals || []), { seq:G.removalSeq, by:pid, victim, what }].slice(-5);
-  return { victim, roadBefore:before, roadAfter:G.longestOwner };
+  noteExt('remove', pid, victim, what, 0);
+  return { victim, weakened:false, left:0, roadBefore:before, roadAfter:G.longestOwner };
+}
+
+function canAffordFortify(p, what){
+  const cost = fortifyCost(what);
+  if (!cost) return false;
+  return ADMIN_FREE() || canAfford(p, cost);
+}
+function isFortifyTarget(pid, what, id){
+  if (what === 'road') return edges[id]?.road === pid;
+  const v = verts[id];
+  return !!v && v.building === what && v.owner === pid;
+}
+function fortifyTargets(pid, what){
+  return (what === 'road' ? edges : verts)
+    .filter(x => isFortifyTarget(pid, what, x.id)).map(x => x.id);
+}
+function canFortify(pid, what, id){
+  const p = G.players[pid];
+  return !!p && !!fortifyCost(what) && Number.isInteger(id) && !extBlocked(pid, 'Fortify')
+      && canAffordFortify(p, what) && isFortifyTarget(pid, what, id);
+}
+// Applies the fortification. The caller has already checked canFortify.
+function fortifyPiece(pid, what, id){
+  if (!ADMIN_FREE()) pay(G.players[pid], FORTIFY[what]);
+  const at = pieceAt(what, id);
+  at.fort = (at.fort || 0) + 1;
+  noteExt('fortify', pid, pid, what, at.fort + 1);
+  return at.fort + 1;
 }
 
 /* ---- turn flow ---- */
@@ -2174,8 +2234,8 @@ function serializeState(){
     rollSeq: G.rollSeq, rollBy: G.rollBy,
     awaitRobber: G.awaitRobber, robberReturn: G.robberReturn, turnEndsAt: G.turnEndsAt,
     autoRoll: G.autoRoll, turnSeconds: G.turnSeconds, unlimitedDevs: !!G.unlimitedDevs,
-    removals: !!G.removals, removalSeq: G.removalSeq || 0,
-    recentRemovals: (G.recentRemovals || []).map(r => ({ ...r })),
+    extension: !!G.extension, extSeq: G.extSeq || 0,
+    recentExt: (G.recentExt || []).map(r => ({ ...r })),
     vote: G.vote ? { target:G.vote.target, yes:G.vote.yes.slice(),
                      no:G.vote.no.slice(), ends:G.vote.ends } : null,
     discardDue: { ...G.discardDue }, discardEndsAt: G.discardEndsAt || 0,
@@ -2189,9 +2249,10 @@ function serializeState(){
       knights:p.knights, vpCards:p.vpCards, vpBonus:p.vpBonus || 0, stock:{ ...p.stock },
       ports:[ ...p.ports ]
     })),
-    // sparse: only corners and edges that are actually claimed
-    built: verts.filter(v => v.building).map(v => [v.id, v.owner, v.building === 'city' ? 1 : 0]),
-    roads: edges.filter(e => e.road !== -1).map(e => [e.id, e.road])
+    // sparse: only corners and edges that are actually claimed; the last
+    // number is how many fortifications the piece carries
+    built: verts.filter(v => v.building).map(v => [v.id, v.owner, v.building === 'city' ? 1 : 0, v.fort || 0]),
+    roads: edges.filter(e => e.road !== -1).map(e => [e.id, e.road, e.fort || 0])
   };
 }
 
@@ -2233,10 +2294,11 @@ function applyState(snap){
   G.autoRoll = !!snap.autoRoll;
   G.turnSeconds = snap.turnSeconds || 0;
   G.unlimitedDevs = !!snap.unlimitedDevs;
-  G.removals = !!snap.removals;
-  G.removalSeq = snap.removalSeq || 0;
-  G.recentRemovals = (snap.recentRemovals || []).filter(Boolean)
-    .map(r => ({ seq:r.seq || 0, by:r.by ?? -1, victim:r.victim ?? -1, what:r.what || 'road' }));
+  G.extension = !!snap.extension;
+  G.extSeq = snap.extSeq || 0;
+  G.recentExt = (snap.recentExt || []).filter(Boolean)
+    .map(r => ({ seq:r.seq || 0, kind:r.kind || 'remove', by:r.by ?? -1, victim:r.victim ?? -1,
+                 what:r.what || 'road', left:r.left || 0 }));
   G.vote = snap.vote
     ? { target:snap.vote.target, yes:(snap.vote.yes||[]).slice(),
         no:(snap.vote.no||[]).slice(), ends:snap.vote.ends || 0 }
@@ -2271,19 +2333,20 @@ function applyState(snap){
     p.ports = new Set(sp.ports || []);
   });
 
-  for (const v of verts){ v.building = null; v.owner = -1; }
+  for (const v of verts){ v.building = null; v.owner = -1; v.fort = 0; }
   for (const row of (snap.built || [])){
     if (!row) continue;
-    const [id, owner, isCity] = row;
+    const [id, owner, isCity, fort] = row;
     if (!verts[id]) continue;
     verts[id].building = isCity ? 'city' : 'settlement';
     verts[id].owner = owner;
+    verts[id].fort = fort || 0;
   }
-  for (const e of edges) e.road = -1;
+  for (const e of edges){ e.road = -1; e.fort = 0; }
   for (const row of (snap.roads || [])){
     if (!row) continue;
-    const [id, owner] = row;
-    if (edges[id]) edges[id].road = owner;
+    const [id, owner, fort] = row;
+    if (edges[id]){ edges[id].road = owner; edges[id].fort = fort || 0; }
   }
   return rebuilt;
 }
@@ -2913,6 +2976,7 @@ const SEAT_MAT = SEATS.map(s => new THREE.MeshPhysicalMaterial({
 const M_OK   = new THREE.MeshBasicMaterial({ color:0x6fdc8c, transparent:true, opacity:0.5 });
 const M_HOT  = new THREE.MeshBasicMaterial({ color:0xffe27a, transparent:true, opacity:0.92 });
 const M_DEL  = new THREE.MeshBasicMaterial({ color:0xe0412e, transparent:true, opacity:0.78 });
+const M_FORT = new THREE.MeshBasicMaterial({ color:0x4f93c9, transparent:true, opacity:0.82 });
 
 /* ---------- static furniture ---------- */
 const BOARD_SPAN = R*Math.sqrt(3)*(BOARD_R + 0.5);
@@ -3136,7 +3200,70 @@ function addRoadMesh(eid, pid){
   m.castShadow = true; m.receiveShadow = true;
   m.userData = { road:eid };
   gPieces.add(m);
+  addFortBadge('road', eid);
   return m;
+}
+
+// A fortified piece carries a small "2×", "3×"… tag floating above it. 1× is
+// every piece's normal state, so it shows nothing.
+// One material per count and owner, shared by every tag that shows it: guests
+// rebuild every piece on each snapshot, and fresh materials would pile up.
+const FORT_MAT = new Map();
+function fortBadgeMaterial(times, pid){
+  const k = `${times}|${pid}`;
+  if (FORT_MAT.has(k)) return FORT_MAT.get(k);
+  const c = document.createElement('canvas'); c.width = 128; c.height = 64;
+  const g = c.getContext('2d');
+  // a dark pill with the owner's colour round the edge
+  g.fillStyle = 'rgba(30,23,17,.9)';
+  g.strokeStyle = SEATS[pid]?.css || '#e9ddc1';
+  g.lineWidth = 6;
+  g.beginPath();
+  if (g.roundRect) g.roundRect(5, 5, 118, 54, 27); else g.rect(5, 5, 118, 54);
+  g.fill(); g.stroke();
+  g.fillStyle = '#f4ecda';
+  g.font = '600 34px "IBM Plex Mono", ui-monospace, Menlo, monospace';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(`${times}×`, 64, 34);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  // the same size on screen at any zoom, so the small print stays readable
+  const m = new THREE.SpriteMaterial({ map:t, transparent:true, depthTest:false, depthWrite:false,
+                                       sizeAttenuation:false });
+  FORT_MAT.set(k, m);
+  return m;
+}
+// Without attenuation a sprite's scale is a share of the view's height, so
+// this keeps the tag about 22px tall on any screen.
+const FORT_TAG_PX = 22;
+function sizeFortBadge(s){
+  const h = (FORT_TAG_PX / Math.max(320, innerHeight)) * 2 * Math.tan(cam.fov * Math.PI / 360);
+  s.scale.set(h * 2, h, 1);
+}
+function addFortBadge(what, id){
+  const at = pieceAt(what, id);
+  if (!at || !(at.fort > 0)) return null;
+  const owner = what === 'road' ? at.road : at.owner;
+  const s = new THREE.Sprite(fortBadgeMaterial(at.fort + 1, owner));
+  s.geometry.userData.shared = true;     // three.js shares one quad between all sprites
+  // above the piece, and above the lifted removal marker too
+  const lift = what === 'road' ? 0.75 : what === 'city' ? 2.05 : 1.7;
+  s.position.set(at.x, TOP + lift, at.z);
+  sizeFortBadge(s);
+  s.renderOrder = 6;
+  s.userData = what === 'road' ? { road:id, fortBadge:true } : { building:id, fortBadge:true };
+  gPieces.add(s);
+  return s;
+}
+// After a fortification is added or knocked off, swap the tag for the new count.
+function refreshFortBadge(what, id){
+  for (const c of piecesAt(what, id).filter(c => c.userData.fortBadge)) gPieces.remove(c);
+  const s = addFortBadge(what, id);
+  if (s){
+    // a quick pop so the change is noticed
+    const base = s.scale.clone();
+    tween(0.3, k => s.scale.copy(base).multiplyScalar(0.6 + 0.4 * easeBack(k)));
+  }
 }
 
 const M_PLINTH = new THREE.MeshStandardMaterial({ color:0x2b2419, roughness:0.85 });
@@ -3157,6 +3284,7 @@ function addBuildingMesh(vid, pid, kind){
   m.castShadow = true; m.receiveShadow = true;
   m.userData = { building:vid };
   gPieces.add(m);
+  addFortBadge(kind, vid);
   return m;
 }
 
@@ -3168,8 +3296,8 @@ function piecesAt(what, id){
 }
 function shrinkAway(doomed){
   for (const m of doomed){
-    const s0 = m.scale.x;
-    tween(0.32, k => m.scale.setScalar(Math.max(0.001, s0 * (1 - k))), () => {
+    const s0 = m.scale.clone();      // a tag is wider than tall, so scale every axis alike
+    tween(0.32, k => m.scale.copy(s0).multiplyScalar(Math.max(0.001, 1 - k)), () => {
       gPieces.remove(m);
       if (m.geometry && !m.geometry.userData.shared) m.geometry.dispose?.();
     });
@@ -3854,7 +3982,7 @@ function missing(p, cost){
 
 /* ---------- the rules, shared by the menu and the in-game sheet ---------- */
 
-function rulesHTML(target = WIN_VP, removals = G.removals){
+function rulesHTML(target = WIN_VP, extension = G.extension){
   const chips = c => Object.entries(c)
     .flatMap(([r,n]) => Array(n).fill(`<s style="background:${COST_DOT[r]}"></s>`)).join('');
   const row = (name, cost, desc) =>
@@ -3904,16 +4032,27 @@ function rulesHTML(target = WIN_VP, removals = G.removals){
   <p>Nobody collects. Anyone holding <b>more than 7 cards discards half</b>. Then the roller
      moves the robber onto any tile — that tile produces nothing until it moves again — and
      steals a card from someone building there.</p>
-${removals ? `
-  <h3>Removal extension</h3>
-  <p>On your turn, after the roll, you may pay the bank to tear down a rival's piece. The owner
-     does not have to agree. Victory point cards go back into the deck; the piece goes back to
-     its owner's supply.</p>
+${extension ? `
+  <h3>Extension</h3>
+  <p>This game adds two actions. Both are only on your own turn, after the roll, and you may
+     use them <b>as many times as you can pay for</b>. With the 30-second clock on, each one
+     starts the clock again.</p>
+  <p><b>Removal</b> — pay the bank to tear down a rival's piece. The owner does not have to
+     agree. Victory point cards go back into the deck; the piece goes back to its owner's
+     supply.</p>
   ${row('Road', REMOVAL.road.cost, `Plus ${REMOVAL.road.vp} victory point card. The road must touch one of your own roads.`)}
   ${row('Settlement', REMOVAL.settlement.cost, `Plus ${REMOVAL.settlement.vp} victory point cards. One of your buildings must be at most ${REMOVE_REACH} legs (hex sides) away.`)}
   ${row('City', REMOVAL.city.cost, `Plus ${REMOVAL.city.vp} victory point cards. Same distance rule as a settlement.`)}
   <p>Longest Road and everyone's score are worked out again at once. Roads and buildings left
-     behind stay where they are, even if they no longer connect.</p>` : ''}
+     behind stay where they are, even if they no longer connect.</p>
+  <p><b>Fortification</b> — pay what one of your own pieces costs to build, and it takes one
+     more removal to bring it down. Every piece starts at 1×, which is not shown. A fortified
+     piece carries a small tag: <b>2×</b>, then <b>3×</b>, and so on.</p>
+  ${row('Road', FORTIFY.road, 'Fortifies one of your roads.')}
+  ${row('Settlement', FORTIFY.settlement, 'Fortifies one of your settlements.')}
+  ${row('City', FORTIFY.city, 'Fortifies one of your cities. A settlement keeps its fortifications when it becomes a city.')}
+  <p>A removal on a fortified piece costs the full price but only takes it down one step, from
+     3× to 2× for example. At 1×, the next removal tears the piece down.</p>` : ''}
 
   <h3>Getting around</h3>
   <p>${IS_TOUCH
@@ -4026,14 +4165,21 @@ function actionSpecs(){
     what:'Upgrades a settlement so it collects 2 resources instead of 1. Worth 2 points.',
     on:()=>armPlacement('city') });
 
-  if (G.removals){
+  if (G.extension){
     const removing = mode?.type === 'remove';
     list.push({
       label:'REMOVE', armed: removing, danger:true,
-      why: removing ? null : (blocked || removalBlocked(p.id)),
+      why: removing ? null : (blocked || extBlocked(p.id)),
       what: removing ? 'Stop removing and go back to your turn.'
-        : 'Pay victory point cards and resources to tear down a rival’s road, settlement or city.',
+        : 'Pay victory point cards and resources to tear down a rival’s road, settlement or city, or knock off one fortification.',
       on:()=> removing ? cancelMode() : openRemoveTray() });
+    const fortifying = mode?.type === 'fortify';
+    list.push({
+      label:'FORTIFY', armed: fortifying,
+      why: fortifying ? null : (blocked || extBlocked(p.id, 'Fortify')),
+      what: fortifying ? 'Stop fortifying and go back to your turn.'
+        : 'Pay a piece’s build cost again so it takes one more removal to bring it down.',
+      on:()=> fortifying ? cancelMode() : openFortifyTray() });
   }
 
   list.push({
@@ -4091,11 +4237,11 @@ function renderActions(){
 }
 
 function renderAll(){
-  // a removal still waiting for its CONFIRM does not outlive the turn or the seven
-  const pendingPid = $('tray')._removalPid;      // read by id: renderAll can run before `tray` is set
-  if (pendingPid >= 0 && removalBlocked(pendingPid)){
+  // a removal or fortification still waiting for its CONFIRM does not outlive the turn or the seven
+  const pendingPid = $('tray')._extPid;          // read by id: renderAll can run before `tray` is set
+  if (pendingPid >= 0 && extBlocked(pendingPid)){
     closeTray();
-    if (mode?.type === 'remove'){ mode = null; clearNodes(); }
+    if (mode?.type === 'remove' || mode?.type === 'fortify'){ mode = null; clearNodes(); }
   }
   renderTurn(); renderPlayers(); renderHand(); renderActions(); refreshCards(); paintHint();
   renderAdmin();
@@ -4266,7 +4412,7 @@ function clearNodes(){
   for (const n of edgeNodes){ n.visible = false; n.position.y = n.userData.baseY; }
 }
 // the colour a marker goes back to once the pointer leaves it
-const nodeMat = () => mode?.type === 'remove' ? M_DEL : M_OK;
+const nodeMat = () => mode?.type === 'remove' ? M_DEL : mode?.type === 'fortify' ? M_FORT : M_OK;
 
 // Every placement mode explains itself, especially roads — people expect them
 // to sit on tiles rather than in the grooves between them.
@@ -4287,16 +4433,18 @@ const MODE_COPY = {
     sub:'Click any hex except the one it sits on. That tile stops producing, and you steal a card from someone building there.' }),
   remove: what => what === 'road'
     ? { title:'Choose a rival road to remove',
-        sub:'Red bars mark rival roads that touch one of your roads. You confirm the payment next.' }
+        sub:'Red bars mark rival roads that touch one of your roads. A fortified one only loses one step. You confirm the payment next.' }
     : { title:`Choose a rival ${what} to remove`,
-        sub:`Red discs mark rival ${what === 'city' ? 'cities' : 'settlements'} at most ${REMOVE_REACH} legs from one of your buildings. You confirm the payment next.` }
+        sub:`Red discs mark rival ${what === 'city' ? 'cities' : 'settlements'} at most ${REMOVE_REACH} legs from one of your buildings. A fortified one only loses one step. You confirm the payment next.` },
+  fortify: what => ({ title:`Choose one of your ${what === 'city' ? 'cities' : what + 's'} to fortify`,
+    sub:`Blue ${what === 'road' ? 'bars' : 'discs'} mark your ${what === 'city' ? 'cities' : what + 's'}. Each fortification takes one more removal to bring it down. You confirm the payment next.` })
 };
 
 function armPlacement(type, opts={}){
   if (mode && mode.type === type && !opts.forced){ cancelMode(); return; }
   const pid = opts.pid ?? G.turn;
   const setup = !!opts.setup;
-  const copy = MODE_COPY[type](type === 'remove' ? opts.what : setup);
+  const copy = MODE_COPY[type](type === 'remove' || type === 'fortify' ? opts.what : setup);
   let ids = [], kind = 'vertex';
 
   if (type === 'settlement'){
@@ -4308,9 +4456,13 @@ function armPlacement(type, opts={}){
     ids = edges.filter(e=>canPlaceRoad(e.id,pid,{setup, fromVertex:opts.fromVertex,
                                                  free:G.freeRoads>0})).map(e=>e.id);
   } else if (type === 'remove'){
-    if (removalBlocked(pid) || !canAffordRemoval(G.players[pid], opts.what)){ cancelMode(); return; }
+    if (extBlocked(pid) || !canAffordRemoval(G.players[pid], opts.what)){ cancelMode(); return; }
     kind = opts.what === 'road' ? 'edge' : 'vertex';
     ids = removalTargets(pid, opts.what);
+  } else if (type === 'fortify'){
+    if (extBlocked(pid, 'Fortify') || !canAffordFortify(G.players[pid], opts.what)){ cancelMode(); return; }
+    kind = opts.what === 'road' ? 'edge' : 'vertex';
+    ids = fortifyTargets(pid, opts.what);
   } else if (type === 'robber'){
     clearNodes();
     mode = { type, pid, title:copy.title, sub:copy.sub, cancel:false };
@@ -4321,8 +4473,9 @@ function armPlacement(type, opts={}){
   if (!ids.length){ cancelMode(); return; }
   mode = { type, pid, setup, kind, ids:new Set(ids), what:opts.what,
            title:copy.title, sub:copy.sub, onDone:opts.onDone, cancel:!setup };
-  if (type === 'remove')
-    showNodes(kind, ids, M_DEL, id => kind === 'edge' ? 0.2 : verts[id].building === 'city' ? 1.3 : 0.95);
+  if (type === 'remove' || type === 'fortify')
+    showNodes(kind, ids, type === 'remove' ? M_DEL : M_FORT,
+      id => kind === 'edge' ? 0.2 : verts[id].building === 'city' ? 1.3 : 0.95);
   else showNodes(kind, ids);
   renderAll();
 }
@@ -4489,6 +4642,7 @@ function fitViewport(){
   cam.aspect = innerWidth/innerHeight;
   cam.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  for (const c of gPieces.children) if (c.userData.fortBadge) sizeFortBadge(c);
   fitUI();
 }
 addEventListener('resize', fitViewport);
@@ -4525,8 +4679,9 @@ function onClick(){
   if (!mode.ids?.has(ud.id)) return;
 
   const pid = mode.pid;
-  // a removal is expensive, so it always asks first; the tray does the rest
+  // a removal or fortification costs a lot, so it always asks first; the tray does the rest
   if (mode.type === 'remove'){ confirmRemoval(pid, mode.what, ud.id); return; }
+  if (mode.type === 'fortify'){ confirmFortify(pid, mode.what, ud.id); return; }
   // Online guests do not touch the board directly; the host applies the move.
   if (NET.mode === 'guest'){
     const kind = mode.type === 'road' ? 'road' : mode.type;
@@ -4569,12 +4724,12 @@ function onClick(){
    ============================================================ */
 
 const tray = $('tray');
-tray._removalPid = -1;          // the seat whose removal is waiting on CONFIRM
+tray._extPid = -1;              // the seat whose removal or fortification is waiting on CONFIRM
 // What the turn clock does with a choice still open on this screen when it
 // runs out. Set by the trays that hold up the turn; cleared with the tray.
 let idleTray = null;
 function closeTray(){
-  tray.classList.add('hide'); trayKind = null; tray._removalPid = -1; idleTray = null;
+  tray.classList.add('hide'); trayKind = null; tray._extPid = -1; idleTray = null;
   const after = tray._onClose; tray._onClose = null;
   after?.();
 }
@@ -4584,7 +4739,7 @@ function closeTray(){
 function openTray(title, sub, build, confirmLabel, onConfirm, validate, dismissible = true){
   $('trayH').textContent = title;
   $('trayS').textContent = sub || '';
-  const replaced = tray._onClose; tray._onClose = null; tray._removalPid = -1;
+  const replaced = tray._onClose; tray._onClose = null; tray._extPid = -1;
   idleTray = null;
   replaced?.();
   const box = $('trayCards'); box.innerHTML = '';
@@ -4936,27 +5091,32 @@ function playDev(card){
   renderAll();
 }
 
-/* ---- removal extension ---- */
+/* ---- extension: removal and fortification ---- */
 const REMOVE_RULE = {
   road:'a rival road that touches one of your roads',
   settlement:`a rival settlement at most ${REMOVE_REACH} legs from one of your buildings`,
   city:`a rival city at most ${REMOVE_REACH} legs from one of your buildings`
 };
+const PLURAL = { road:'roads', settlement:'settlements', city:'cities' };
 
+const resCostText = cost => Object.entries(cost).map(([k,n]) => `${n} ${RES_LABEL[k].toLowerCase()}`);
 function removalCostText(what){
   const r = REMOVAL[what];
-  return [`${r.vp} VP card${r.vp > 1 ? 's' : ''}`,
-    ...Object.entries(r.cost).map(([k,n]) => `${n} ${RES_LABEL[k].toLowerCase()}`)].join(' · ');
+  return [`${r.vp} VP card${r.vp > 1 ? 's' : ''}`, ...resCostText(r.cost)].join(' · ');
 }
+const fortifyCostText = what => resCostText(FORTIFY[what]).join(' · ');
 // gold rounds are victory point cards; a faded chip is one you do not hold yet
-function removalChips(what, p, withText = true){
-  const r = REMOVAL[what];
-  const vp = Array.from({length:r.vp}, (_,i) =>
+function extChips(cost, vpN, p, text){
+  const vp = Array.from({length:vpN}, (_,i) =>
     `<s class="vp${p.vpCards <= i ? ' lack' : ''}" title="VICTORY POINT CARD"></s>`);
-  const res = Object.entries(r.cost).flatMap(([k,n]) => Array.from({length:n}, (_,i) =>
+  const res = Object.entries(cost).flatMap(([k,n]) => Array.from({length:n}, (_,i) =>
     `<s class="${p.res[k] <= i ? 'lack' : ''}" style="background:${COST_DOT[k]}" title="${RES_LABEL[k]}"></s>`));
-  return `<span class="rmCost">${vp.join('')}${res.join('')}${withText ? `<i>${removalCostText(what)}</i>` : ''}</span>`;
+  return `<span class="rmCost">${vp.join('')}${res.join('')}${text ? `<i>${text}</i>` : ''}</span>`;
 }
+const removalChips = (what, p, withText = true) =>
+  extChips(REMOVAL[what].cost, REMOVAL[what].vp, p, withText && removalCostText(what));
+const fortifyChips = (what, p, withText = true) =>
+  extChips(FORTIFY[what], 0, p, withText && fortifyCostText(what));
 function removalWhyNot(p, what){
   const r = REMOVAL[what];
   const short = r.vp - p.vpCards;
@@ -4965,11 +5125,27 @@ function removalWhyNot(p, what){
   if (!removalTargets(p.id, what).length) return 'NOTHING IN REACH';
   return null;
 }
+function fortifyWhyNot(p, what){
+  if (!fortifyTargets(p.id, what).length) return `NO ${PLURAL[what].toUpperCase()} YET`;
+  if (!canAffordFortify(p, what)) return 'NOT ENOUGH RESOURCES';
+  return null;
+}
+
+// After a removal or fortification lands, the same markers come straight back
+// while there is still something to pay for, so the next one is one tap away.
+function rearmExt(type, what, pid){
+  if (G.phase !== 'main' || extBlocked(pid) || mode) return;
+  const p = G.players[pid];
+  const no = type === 'remove' ? removalWhyNot(p, what) : fortifyWhyNot(p, what);
+  if (!no) armPlacement(type, { what, pid, forced:true });
+}
+// A guest waits for the host's snapshot first: { type, what, after:extSeq }.
+let extRearm = null;
 
 // Step 1: pick what kind of piece to remove.
 function openRemoveTray(){
   const p = cur();
-  if (removalBlocked(p.id)){ renderAll(); return; }
+  if (extBlocked(p.id)){ renderAll(); return; }
   openTray('Remove a rival piece',
     `you hold ${p.vpCards} victory point card${p.vpCards === 1 ? '' : 's'} · paid to the bank`,
     box => {
@@ -5000,42 +5176,123 @@ function confirmRemoval(pid, what, id){
   const q = G.players[owner];
   const node = (what === 'road' ? edgeNodes : vertexNodes)[id];
   if (node) node.material = M_HOT;
+  const times = fortTimes(what, id);
   const lost = what === 'city' ? 2 : what === 'settlement' ? 1 : 0;
-  openTray(`Remove ${q.name}'s ${what}?`, 'paid to the bank · this cannot be undone', box => {
+  const fate = times > 1
+    ? `The ${what} is fortified, so it only drops from ${times}× to ${times - 1}× and stays on the board${
+        times - 1 === 1 ? ' — the next removal tears it down' : ''}.`
+    : `${lost ? `${esc(q.name)} loses the ${lost} point${lost > 1 ? 's' : ''} it was worth. ` : ''}
+       Longest Road is worked out again.`;
+  openTray(times > 1 ? `Break a fortification on ${q.name}'s ${what}?` : `Remove ${q.name}'s ${what}?`,
+    'paid to the bank · this cannot be undone', box => {
     box.style.flexDirection = 'column';
     box.style.alignItems = 'stretch';
     box.innerHTML = `
       <div class="rmNote">You pay <b>${removalCostText(what)}</b>. The victory point cards
-        go back into the deck, so your score drops by ${REMOVAL[what].vp}.
-        ${lost ? `${esc(q.name)} loses the ${lost} point${lost > 1 ? 's' : ''} it was worth. ` : ''}
-        Longest Road is worked out again.</div>
+        go back into the deck, so your score drops by ${REMOVAL[what].vp}. ${fate}</div>
       ${removalChips(what, p, false)}`;
   }, 'REMOVE', ()=>{
     closeTray();
     if (!canRemove(pid, what, id)){ cancelMode(); return; }
     mode = null; clearNodes();
-    if (NET.mode === 'guest'){ sendIntent('remove', { what, id }); renderAll(); return; }
-    doRemove(pid, what, id);
+    if (NET.mode === 'guest'){
+      extRearm = { type:'remove', what, after:G.extSeq };
+      sendIntent('remove', { what, id }); renderAll(); return;
+    }
+    if (doRemove(pid, what, id)) rearmExt('remove', what, pid);
   }, ()=>canRemove(pid, what, id));
   // closing without confirming leaves the other targets up to pick from
   tray._onClose = () => { if (node && mode?.type === 'remove') node.material = M_DEL; };
-  tray._removalPid = pid;
+  tray._extPid = pid;
 }
 
 // Host and local play only: apply it, then show it.
 function doRemove(pid, what, id){
   if (!canRemove(pid, what, id)){ renderAll(); return false; }
   noteTurnActivity(pid);
-  const at = what === 'road' ? edges[id] : verts[id];
+  const at = pieceAt(what, id);
   const doomed = piecesAt(what, id);
   const out = removePiece(pid, what, id);
-  reachFor(pid, at.x, at.z, () => shrinkAway(doomed));
-  announce(pid, `tore down ${esc(G.players[out.victim].name)}'s ${what}`, removalCostText(what));
+  const victim = esc(G.players[out.victim].name);
+  if (out.weakened){
+    reachFor(pid, at.x, at.z, () => refreshFortBadge(what, id));
+    announce(pid, `broke a fortification on ${victim}'s ${what}`, `${out.left + 1}× → ${out.left}×`);
+  } else {
+    reachFor(pid, at.x, at.z, () => shrinkAway(doomed));
+    announce(pid, `tore down ${victim}'s ${what}`, removalCostText(what));
+  }
   if (out.roadAfter !== out.roadBefore){
     if (out.roadAfter >= 0) announce(out.roadAfter, 'takes Longest Road', `${G.longestLen} roads`);
     else log('Longest Road is set aside — nobody holds it now');
   }
-  if (checkWin()){ announceWin(); return true; }
+  if (checkWin()){ announceWin(); return false; }
+  renderAll();
+  return true;
+}
+
+// Step 1: pick what kind of piece to fortify.
+function openFortifyTray(){
+  const p = cur();
+  if (extBlocked(p.id, 'Fortify')){ renderAll(); return; }
+  openTray('Fortify one of your pieces',
+    'paid to the bank · each one takes one more removal to bring it down',
+    box => {
+      box.style.flexDirection = 'column';
+      box.style.alignItems = 'stretch';
+      for (const what of Object.keys(FORTIFY)){
+        const no = fortifyWhyNot(p, what);
+        const row = document.createElement('button');
+        row.className = 'rmRow fort';
+        row.disabled = !!no;
+        row.innerHTML = `
+          <span class="top"><span class="nm">${what.toUpperCase()}</span>
+            <span class="st">${no || 'CHOOSE →'}</span></span>
+          <span class="ds">Fortify one of your ${PLURAL[what]}. Costs what it costs to build.</span>
+          ${fortifyChips(what, p)}`;
+        if (!no) row.onclick = ()=>{ closeTray(); armPlacement('fortify', { what, forced:true }); };
+        box.appendChild(row);
+      }
+    },
+    'CLOSE', ()=>{ closeTray(); renderAll(); }, null);
+}
+
+// Step 2: one of your pieces was tapped. Name the price before anything is paid.
+function confirmFortify(pid, what, id){
+  if (!canFortify(pid, what, id)){ cancelMode(); return; }
+  const p = G.players[pid];
+  const node = (what === 'road' ? edgeNodes : vertexNodes)[id];
+  if (node) node.material = M_HOT;
+  const times = fortTimes(what, id);
+  openTray(`Fortify your ${what}?`, 'paid to the bank', box => {
+    box.style.flexDirection = 'column';
+    box.style.alignItems = 'stretch';
+    box.innerHTML = `
+      <div class="rmNote">You pay <b>${fortifyCostText(what)}</b>. Your ${what} goes from
+        ${times}× to <b>${times + 1}×</b>: it takes ${times + 1} removals to bring it down.</div>
+      ${fortifyChips(what, p, false)}`;
+  }, 'FORTIFY', ()=>{
+    closeTray();
+    if (!canFortify(pid, what, id)){ cancelMode(); return; }
+    mode = null; clearNodes();
+    if (NET.mode === 'guest'){
+      extRearm = { type:'fortify', what, after:G.extSeq };
+      sendIntent('fortify', { what, id }); renderAll(); return;
+    }
+    if (doFortify(pid, what, id)) rearmExt('fortify', what, pid);
+  }, ()=>canFortify(pid, what, id));
+  // closing without confirming leaves the other pieces up to pick from
+  tray._onClose = () => { if (node && mode?.type === 'fortify') node.material = M_FORT; };
+  tray._extPid = pid;
+}
+
+// Host and local play only: apply it, then show it.
+function doFortify(pid, what, id){
+  if (!canFortify(pid, what, id)){ renderAll(); return false; }
+  noteTurnActivity(pid);
+  const at = pieceAt(what, id);
+  const times = fortifyPiece(pid, what, id);
+  reachFor(pid, at.x, at.z, () => refreshFortBadge(what, id));
+  announce(pid, `fortified a ${what}`, `now ${times}× · ${fortifyCostText(what)}`, false);
   renderAll();
   return true;
 }
@@ -5747,7 +6004,7 @@ let hostWinVPCustom = false;
 let hostAutoRoll = false;
 let hostTimeout = false;
 let hostUnlimited = false;
-let hostRemovals = false;
+let hostExtension = false;
 
 // A small helper so every choice row in the menu behaves the same way.
 function pickerRow(host, options, current, onPick){
@@ -5819,10 +6076,10 @@ function wireOnlineTab(){
     hostUnl.checked = hostUnlimited;
     hostUnl.onchange = ()=>{ hostUnlimited = !!hostUnl.checked; };
   }
-  const hostRem = $('hostRemovals');
-  if (hostRem){
-    hostRem.checked = hostRemovals;
-    hostRem.onchange = ()=>{ hostRemovals = !!hostRem.checked; };
+  const hostExt = $('hostExtension');
+  if (hostExt){
+    hostExt.checked = hostExtension;
+    hostExt.onchange = ()=>{ hostExtension = !!hostExt.checked; };
   }
 
   const grab = () => $('joinName').value;
@@ -5831,7 +6088,7 @@ function wireOnlineTab(){
     hostWinVP = readTargetInput('hostTarget', fallback);
     hostWinVPCustom = hostWinVP !== fallback;
     $('hostErr').textContent = 'creating…';
-    try { await netHost(hostSeatCount, grab(), hostPublic, hostWinVP, hostWinVPCustom, hostAutoRoll, hostTimeout, hostUnlimited, hostRemovals); $('hostErr').textContent = ''; }
+    try { await netHost(hostSeatCount, grab(), hostPublic, hostWinVP, hostWinVPCustom, hostAutoRoll, hostTimeout, hostUnlimited, hostExtension); $('hostErr').textContent = ''; }
     catch(e){ console.error('[harbour/net]', e); $('hostErr').textContent = netExplain(e); }
   };
   $('joinBtn').onclick = async ()=>{
@@ -5886,7 +6143,7 @@ let playWinVP = defaultWinVP(seatCount);
 let playAutoRoll = false;
 let playTimeout = false;
 let playUnlimited = false;
-let playRemovals = false;
+let playExtension = false;
 let menuPane = 'play';
 {
   const seatOpts = Array.from({length:MAX_SEATS-1}, (_,i)=>[String(i+2), i+2]);
@@ -5910,10 +6167,10 @@ let menuPane = 'play';
     playUnl.checked = playUnlimited;
     playUnl.onchange = ()=>{ playUnlimited = !!playUnl.checked; };
   }
-  const playRem = $('playRemovals');
-  if (playRem){
-    playRem.checked = playRemovals;
-    playRem.onchange = ()=>{ playRemovals = !!playRem.checked; };
+  const playExt = $('playExtension');
+  if (playExt){
+    playExt.checked = playExtension;
+    playExt.onchange = ()=>{ playExtension = !!playExt.checked; };
   }
 }
 
@@ -5926,7 +6183,7 @@ for (const t of Array.from(document.querySelectorAll?.('.tab') || [])){
     if (t.dataset.pane === 'how') $('menuRules').innerHTML = rulesHTML(
       readTargetInput(menuPane === 'host' ? 'hostTarget' : 'playTarget',
         menuPane === 'host' ? hostWinVP : playWinVP),
-      menuPane === 'host' ? hostRemovals : playRemovals);
+      menuPane === 'host' ? hostExtension : playExtension);
     else menuPane = t.dataset.pane;
     showIdentity(t.dataset.pane);
     if (t.dataset.pane === 'join' && netConfigured())
@@ -5946,7 +6203,7 @@ $('startBtn').onclick = ()=>{
   newGame(seatCount, undefined, playWinVP, playUnlimited);
   G.autoRoll = !!playAutoRoll;
   G.turnSeconds = playTimeout ? 30 : 0;
-  G.removals = !!playRemovals;
+  G.extension = !!playExtension;
   // seat 0 is always you; the rest are bots unless you asked for pass & play
   for (const p of G.players) p.bot = vsBots && p.id !== 0;
   buildBoardMeshes();
@@ -5955,7 +6212,7 @@ $('startBtn').onclick = ()=>{
   log(vsBots
     ? `A fresh board for ${seatCount}. You are ${G.players[0].name}; the rest are bots.`
     : `A fresh board for ${seatCount}. Pass the mouse along each turn.`, true);
-  if (G.removals) log('The <b>removal extension</b> is on — see RULES for the prices.');
+  if (G.extension) log('The <b>extension</b> is on — removal and fortification. See RULES for the prices.');
   renderDie($('d0'),0); renderDie($('d1'),0); $('diceSum').textContent='';
   renderAll();
   runSetup();
@@ -6056,7 +6313,7 @@ async function netBoot(){
 
 // Online tables are people only. Seats stay open until somebody claims them,
 // and the game starts with exactly whoever turned up.
-async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCount), customWinVP=false, autoRoll=false, timeout=false, unlimited=false, removals=false){
+async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCount), customWinVP=false, autoRoll=false, timeout=false, unlimited=false, extension=false){
   const fb = await netBoot();
   NET.mode = 'host';
   NET.seat = 0;
@@ -6069,13 +6326,13 @@ async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCou
   hostAutoRoll = !!autoRoll;
   hostTimeout = !!timeout;
   hostUnlimited = !!unlimited;
-  hostRemovals = !!removals;
+  hostExtension = !!extension;
 
   botStop();
   newGame(seatCount, undefined, hostWinVP, hostUnlimited);
   G.autoRoll = hostAutoRoll;
   G.turnSeconds = hostTimeout ? 30 : 0;
-  G.removals = hostRemovals;
+  G.extension = hostExtension;
   G.players.forEach(p => { p.bot = false; });
   G.players[0].name = NET.myName;
 
@@ -6175,8 +6432,8 @@ async function netJoin(code, name){
       syncMeshesToState();
       renderAll();
       // the lobby names the host's game options, which arrive with the state
-      if (lobbyRemovals !== G.removals && !$('modal').classList.contains('hide')){
-        lobbyRemovals = G.removals; renderLobby();
+      if (lobbyExtension !== G.extension && !$('modal').classList.contains('hide')){
+        lobbyExtension = G.extension; renderLobby();
       }
       guestTick();
       NET.lastSync = Date.now();
@@ -6219,7 +6476,7 @@ async function netJoin(code, name){
 // write, backgrounded tab, flaky wifi — repairs itself on the next beat instead
 // of staying wrong for the rest of the game.
 let heartbeat = null;
-let lobbyRemovals = null;      // the removal option the guest's lobby last showed
+let lobbyExtension = null;     // the extension option the guest's lobby last showed
 function startHeartbeat(){
   clearInterval(heartbeat);
   heartbeat = setInterval(()=>{
@@ -6408,6 +6665,9 @@ function hostApplyIntent(it){
     case 'remove':
       doRemove(seat, it.what, it.id);
       return;                       // doRemove already renders and checks for a win
+    case 'fortify':
+      doFortify(seat, it.what, it.id);
+      return;                       // doFortify already renders
     case 'end':
       doEndTurn();
       return;                       // doEndTurn already renders and pushes
@@ -6545,7 +6805,7 @@ function resolveVote(){
 }
 
 // Guests have no game loop of their own; every prompt comes off the snapshot.
-let seenRemoval = -1;
+let seenExt = -1;
 function guestTick(){
   if (NET.mode !== 'guest') return;
 
@@ -6557,15 +6817,21 @@ function guestTick(){
     showRoll(G.rollBy, G.dice[0], G.dice[1]);
   }
 
-  // a removal we have not shown yet; the first snapshot only catches up
-  if (G.removalSeq !== seenRemoval){
-    const since = seenRemoval;
-    seenRemoval = G.removalSeq;
-    if (since >= 0 && G.removalSeq > since){
-      for (const r of G.recentRemovals){
+  // a removal or fortification we have not shown yet; the first snapshot only catches up
+  if (G.extSeq !== seenExt){
+    const since = seenExt;
+    seenExt = G.extSeq;
+    if (since >= 0 && G.extSeq > since){
+      for (const r of G.recentExt){
         if (r.seq <= since || !G.players[r.by] || !G.players[r.victim] || !removalRule(r.what)) continue;
-        announce(r.by, `tore down ${esc(G.players[r.victim].name)}'s ${r.what}`,
-          r.victim === NET.seat ? 'yours' : removalCostText(r.what));
+        const whose = esc(G.players[r.victim].name);
+        if (r.kind === 'fortify')
+          announce(r.by, `fortified a ${r.what}`, `now ${r.left}× · ${fortifyCostText(r.what)}`, false);
+        else if (r.kind === 'weaken')
+          announce(r.by, `broke a fortification on ${whose}'s ${r.what}`, `${r.left + 1}× → ${r.left}×`);
+        else
+          announce(r.by, `tore down ${whose}'s ${r.what}`,
+            r.victim === NET.seat ? 'yours' : removalCostText(r.what));
       }
     }
   }
@@ -6597,14 +6863,23 @@ function guestTick(){
       armPlacement('settlement', { pid:NET.seat, setup:true, forced:true });
     return;
   }
-  if (G.turn !== NET.seat){ if (mode) cancelMode(); return; }
-  if (mode?.type === 'remove'){
-    if (removalBlocked(NET.seat) || !canAffordRemoval(G.players[NET.seat], mode.what)) cancelMode();
+  if (G.turn !== NET.seat){ extRearm = null; if (mode) cancelMode(); return; }
+  // our last removal or fortification has landed: put the markers back up
+  if (extRearm && G.extSeq > extRearm.after){
+    const { type, what } = extRearm;
+    extRearm = null;
+    if (!(tray._extPid >= 0)) rearmExt(type, what, NET.seat);
+  }
+  if (mode?.type === 'remove' || mode?.type === 'fortify'){
+    const removing = mode.type === 'remove';
+    const p = G.players[NET.seat];
+    if (extBlocked(NET.seat) || !(removing ? canAffordRemoval(p, mode.what) : canAffordFortify(p, mode.what)))
+      cancelMode();
     else {
       // a snapshot can take a target away, or add one; redraw the markers to match
-      const now = removalTargets(NET.seat, mode.what);
+      const now = removing ? removalTargets(NET.seat, mode.what) : fortifyTargets(NET.seat, mode.what);
       const changed = now.length !== mode.ids.size || now.some(id => !mode.ids.has(id));
-      if (changed && !(tray._removalPid >= 0)) armPlacement('remove', { what:mode.what, forced:true });
+      if (changed && !(tray._extPid >= 0)) armPlacement(mode.type, { what:mode.what, forced:true });
     }
   }
   if (G.freeRoads > 0){ armPlacement('road', { forced:true }); return; }
@@ -6832,7 +7107,7 @@ function renderLobby(){
   body.innerHTML = `
     <div class="codeBox"><span>${codeLabel}</span><b>${NET.code || '----'}</b></div>
     ${listing}
-    ${G.removals ? '<div class="listOk">removal extension on — rivals can pay to tear pieces down</div>' : ''}
+    ${G.extension ? '<div class="listOk">extension on — removal and fortification</div>' : ''}
     <div class="lobbyList">${idx.map(i => {
       const sv = seats[i] || {};
       const here = !!sv.uid;
@@ -6870,13 +7145,13 @@ async function netStartGame(){
   here.forEach((h, i) => { compact[i] = { uid:h.uid, name:h.name }; });
   const autoRoll = !!G.autoRoll;
   const turnSeconds = G.turnSeconds || 0;
-  const removals = !!G.removals;
+  const extension = !!G.extension;
 
   botStop();
   newGame(here.length, G.seed, hostWinVPCustom ? hostWinVP : defaultWinVP(here.length), G.unlimitedDevs);
   G.autoRoll = autoRoll;
   G.turnSeconds = turnSeconds;
-  G.removals = removals;
+  G.extension = extension;
   G.players.forEach((p, i) => { p.bot = false; p.name = here[i].name; });
   NET.seat = here.findIndex(h => h.uid === NET.uid);
   NET.seats = compact;
@@ -6893,7 +7168,7 @@ async function netStartGame(){
   buildBoardMeshes(); buildSeats(here.length);
   elToasts.innerHTML = '';
   log(`Room ${NET.code} — ${here.map(h=>h.name).join(', ')}.`, true);
-  if (G.removals) log('The <b>removal extension</b> is on — see RULES for the prices.');
+  if (G.extension) log('The <b>extension</b> is on — removal and fortification. See RULES for the prices.');
   hostBriefing();
   renderDie($('d0'),0); renderDie($('d1'),0); $('diceSum').textContent='';
   renderAll();
@@ -7148,8 +7423,8 @@ function renderAdmin(){
     }
     else if (act === 'free') adminFree = !adminFree;
     else if (act === 'wipe'){
-      for (const vx of verts) if (vx.owner === adminSeat){ vx.building = null; vx.owner = -1; }
-      for (const e of edges) if (e.road === adminSeat) e.road = -1;
+      for (const vx of verts) if (vx.owner === adminSeat){ vx.building = null; vx.owner = -1; vx.fort = 0; }
+      for (const e of edges) if (e.road === adminSeat){ e.road = -1; e.fort = 0; }
       p.stock = { ...STOCK };
       syncMeshesToState();
       recomputeLongest();
