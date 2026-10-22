@@ -2766,7 +2766,7 @@ function botBankTrade(pid){
   for (const r of RES){
     if (r === short[0]) continue;
     const rate = tradeRate(p, r);
-    const spare = p.res[r] - (COST[target][r] || 0);
+    const spare = p.res[r] - (botWishCost(pid, target)[r] || 0);
     if (spare < rate) continue;
     const cost = need[r] * 1.35;            // giving up something wanted hurts
     if (!best || cost < best.cost) best = { give:r, want:short[0], cost };
