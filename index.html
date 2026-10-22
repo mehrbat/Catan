@@ -1473,8 +1473,6 @@ function dealPorts(){
 
 // What each bot is working towards, by seat. Only the host's bots use it; see botPlanRefresh.
 const botPlans = {}, botPlanTried = {};
-// The offers each bot has put on the table this turn, by seat; see botPlayerOffer.
-const botOffers = {};
 
 const G = {
   players: [], devDeck: [], turn: 0,
@@ -1547,7 +1545,6 @@ function newGame(nPlayers, seed, initialWinVP = defaultWinVP(nPlayers), unlimite
   G.police = []; G.policeMoved = false;
   for (const k of Object.keys(botPlans)) delete botPlans[k];
   for (const k of Object.keys(botPlanTried)) delete botPlanTried[k];
-  for (const k of Object.keys(botOffers)) delete botOffers[k];
   G.discardDue = {}; G.discardEndsAt = 0;
 
   // Two passes round the table in the same direction, matching normal turn
@@ -2777,68 +2774,6 @@ function botBankTrade(pid){
   return best;
 }
 
-// An offer to the whole table, for the resource the top of the wishlist lacks.
-// The bot gives something it has to spare: one for one, or two for one when it
-// has plenty. It never looks at other hands, and it offers at most
-// BOT_OFFER_MAX times a turn, never the same deal twice.
-const BOT_OFFER_MAX = 2;
-const BOT_TRADE_WAIT = 10000;     // ms a bot waits for the humans to answer
-function botPlayerOffer(pid){
-  const p = G.players[pid];
-  if (G.offer) return null;
-  let sent = botOffers[pid];
-  if (!sent || sent.seq !== G.rollSeq) sent = botOffers[pid] = { seq:G.rollSeq, n:0, deals:new Set() };
-  if (sent.n >= BOT_OFFER_MAX) return null;
-
-  const wish = botWishlist(pid);
-  const cost = botWishCost(pid, wish[0]);
-  const short = RES.filter(r => p.res[r] < (cost[r] || 0));
-  if (!short.length) return null;
-  // what the top two wishes use is kept back
-  const keep = {};
-  for (const t of wish.slice(0, 2))
-    for (const [r, n] of Object.entries(botWishCost(pid, t))) keep[r] = Math.max(keep[r] || 0, n);
-
-  let best = null;
-  for (const want of short) for (const give of RES){
-    if (give === want) continue;
-    const spare = p.res[give] - (keep[give] || 0);
-    for (const n of spare >= 4 ? [1, 2] : spare >= 1 ? [1] : []){
-      const deal = `${n} ${give} > ${want}`;
-      if (sent.deals.has(deal)) continue;
-      const s = botValue(pid, want) - botValue(pid, give) * n;
-      if (s > 0 && (!best || s > best.s)) best = { give:{ [give]:n }, get:{ [want]:1 }, deal, s };
-    }
-  }
-  return best;
-}
-// The bot's offer has had its answers, or its time. Trade with whoever said
-// yes and has the fewest points everyone can see; a tie is settled at random.
-function botCloseOffer(pid){
-  const o = G.offer;
-  const yes = G.players.filter(q => q.id !== pid && o.replies[q.id] === 'yes' && canPay(q, o.get));
-  if (!yes.length){ G.offer = null; log(`${nameOf(pid)} withdraws the offer`); return; }
-  const low = Math.min(...yes.map(q => victoryPoints(q.id, false)));
-  const pick = yes.filter(q => victoryPoints(q.id, false) === low);
-  const done = settleOffer(pid, pick[ri(pick.length)].id);
-  if (done) announce(pid, `traded with ${G.players[done.with].name}`,
-    `${fmtBag(done.give)} → ${fmtBag(done.get)}`, false);
-}
-// Other bots answer at once. Humans who could pay get BOT_TRADE_WAIT to answer.
-function botAwaitReplies(pid, until){
-  botSoon(() => {
-    if (G.turn !== pid || G.phase !== 'main' || !isBot(pid)) return;
-    const o = G.offer;
-    if (!o || o.from !== pid){ botStep(); return; }      // the clock withdrew it
-    const waiting = G.players.some(q =>
-      q.id !== pid && !q.bot && !o.replies[q.id] && canPay(q, o.get));
-    if (waiting && Date.now() < until){ botAwaitReplies(pid, until); return; }
-    botCloseOffer(pid);
-    renderAll();
-    botSoon(botStep, BOT_PACE.act);
-  }, 500);
-}
-
 // A player's offer: the bot hands over `botGives` and receives `botGets`.
 function botEvaluateOffer(pid, botGives, botGets){
   const p = G.players[pid];
@@ -3089,10 +3024,6 @@ function botNextAction(pid){
     const bar = plan && !policeOf(pid).length ? 1.5 : 3;
     if (spot && spot.v >= bar && canHirePolice(pid, spot.id)) return { type:'hirePolice', id:spot.id };
   }
-
-  // ask the table for what is missing before spending on cards or paying the bank's rate
-  const offer = botPlayerOffer(pid);
-  if (offer) return { type:'offer', give:offer.give, get:offer.get, deal:offer.deal };
 
   // cards are the fallback sink, and the way to Largest Army
   if (canAfford(p, COST.dev) && G.devDeck.length) return { type:'dev' };
@@ -6344,16 +6275,6 @@ function botStep(){
     case 'movePolice':
       doMovePolice(pid, a.from, a.to);
       break;
-    case 'offer': {
-      const sent = botOffers[pid];
-      sent.n++; sent.deals.add(a.deal);
-      if (!openOffer(pid, a.give, a.get)) break;
-      noteTurnActivity(pid);
-      log(`${nameOf(pid)} offers ${fmtBag(a.give)} for ${fmtBag(a.get)}`);
-      renderAll();
-      botAwaitReplies(pid, Date.now() + BOT_TRADE_WAIT);
-      return;
-    }
     case 'bankTrade': {
       const p = G.players[pid];
       const rate = bankTrade(p, a.give, a.want);
