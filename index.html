@@ -1093,7 +1093,7 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
           <span>Extension</span>
         </label>
         <ul class="optList">
-          <li><b>Own</b> — pay 1 victory point card (no resources) to replace a rival's road, settlement or city with your own, if one of your roads leads to it. Needs 10 or more points once (you keep the right after dropping below), and the rival must have 10 or more now</li>
+          <li><b>Own</b> — pay 1 victory point card and 3 times the build cost to replace a rival's road, settlement or city with your own, if one of your roads leads to it. Needs 10 or more points once (you keep the right after dropping below), and the rival must have shown 10 or more once</li>
           <li><b>Fortification</b> — pay a piece's build cost again to shield it from one more takeover; a settlement keeps its shield when it becomes a city</li>
           <li><b>Police</b> — hire up to two officers; the robber can never be placed where one stands, and one can be sacrificed to skip a seven's discard</li>
         </ul>
@@ -1143,7 +1143,7 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
           <span>Extension</span>
         </label>
         <ul class="optList">
-          <li><b>Own</b> — pay 1 victory point card (no resources) to replace a rival's road, settlement or city with your own, if one of your roads leads to it. Needs 10 or more points once (you keep the right after dropping below), and the rival must have 10 or more now</li>
+          <li><b>Own</b> — pay 1 victory point card and 3 times the build cost to replace a rival's road, settlement or city with your own, if one of your roads leads to it. Needs 10 or more points once (you keep the right after dropping below), and the rival must have shown 10 or more once</li>
           <li><b>Fortification</b> — pay a piece's build cost again to shield it from one more takeover; a settlement keeps its shield when it becomes a city</li>
           <li><b>Police</b> — hire up to two officers; the robber can never be placed where one stands, and one can be sacrificed to skip a seven's discard</li>
         </ul>
@@ -1510,7 +1510,7 @@ function newPlayer(i){
   return {
     id:i, name:SEATS[i].name, hex:SEATS[i].hex, css:SEATS[i].css, bot:false,
     res:{ lumber:0, brick:0, wool:0, grain:0, ore:0 },
-    devs:[], boughtThisTurn:[], knights:0, vpCards:0, vpBonus:0, ownUnlocked:false,
+    devs:[], boughtThisTurn:[], knights:0, vpCards:0, vpBonus:0, ownUnlocked:false, ownableUnlocked:false,
     stock:{ road:STOCK.road, settlement:STOCK.settlement, city:STOCK.city },
     ports:new Set()
   };
@@ -1721,6 +1721,7 @@ function victoryPoints(pid, includeHidden=true){
 function checkWin(){
   for (const p of G.players){
     if (victoryPoints(p.id) >= OWN_MIN_POINTS) p.ownUnlocked = true;
+    if (victoryPoints(p.id, false) >= OWN_MIN_POINTS) p.ownableUnlocked = true;
   }
   for (const p of G.players) if (victoryPoints(p.id) >= WIN_VP){ G.winner = p.id; G.phase='over'; return true; }
   return false;
@@ -2049,13 +2050,14 @@ function consumeDev(pid, card){
 // With the extension on, a player can take over a rival's piece by force: pay,
 // and the piece is replaced by one of your own, road for road, settlement for
 // settlement, city for city. It costs one victory point card, which goes back
-// into the deck. Only players with OWN_MIN_POINTS or more can do it, and only
-// to rivals with as many: anyone below that is safe from losing pieces.
+// into the deck, and three times what the piece costs to build. Only players
+// with OWN_MIN_POINTS or more can do it, and only to rivals who have shown as
+// many: anyone who never got there is safe from losing pieces.
 const OWN_MIN_POINTS = 10;
 const TAKEOVER = {
-  road:       { vp:1, cost:{} },
-  settlement: { vp:1, cost:{} },
-  city:       { vp:1, cost:{} }
+  road:       { vp:1, cost:{ lumber:3, brick:3 } },
+  settlement: { vp:1, cost:{ lumber:3, brick:3, wool:3, grain:3 } },
+  city:       { vp:1, cost:{ grain:6, ore:9 } }
 };
 const takeoverRule = what => Object.prototype.hasOwnProperty.call(TAKEOVER, what) ? TAKEOVER[what] : null;
 
@@ -2090,12 +2092,21 @@ function canOwnAtAll(pid){
   if (victoryPoints(pid) >= OWN_MIN_POINTS) p.ownUnlocked = true;
   return !!p.ownUnlocked;
 }
-const isOwnable = pid => victoryPoints(pid, false) >= OWN_MIN_POINTS;
+// A rival is judged on the points everyone can see. Once they have shown
+// OWN_MIN_POINTS, they stay open to takeovers after dropping back below it,
+// so losing one piece does not shield the roads around it.
+function isOwnable(pid){
+  const p = G.players[pid];
+  if (!p) return false;
+  if (victoryPoints(pid, false) >= OWN_MIN_POINTS) p.ownableUnlocked = true;
+  return !!p.ownableUnlocked;
+}
 function canAffordTakeover(p, what){
   const rule = takeoverRule(what);
   if (!rule || !hasSpareOf(p, what) || !canOwnAtAll(p.id)) return false;
-  if (ADMIN_FREE()) return true;
-  return p.vpCards >= rule.vp && canAfford(p, rule.cost);
+  // free build waives the resources, never the victory point card
+  if (p.vpCards < rule.vp) return false;
+  return ADMIN_FREE() || canAfford(p, rule.cost);
 }
 // You can only take what one of your own roads leads to: a road that joins
 // yours (a rival building on the shared corner still blocks it), or a
@@ -2130,11 +2141,9 @@ const portsOf = pid => new Set(verts.filter(u => u.owner === pid && u.port).map(
 // piece only loses one fortification and stays with its owner.
 function takePiece(pid, what, id){
   const rule = TAKEOVER[what], p = G.players[pid];
-  if (!ADMIN_FREE()){
-    pay(p, rule.cost);
-    p.vpCards -= rule.vp;
-    for (let i = 0; i < rule.vp; i++) G.devDeck.splice(ri(G.devDeck.length + 1), 0, 'victory');
-  }
+  if (!ADMIN_FREE()) pay(p, rule.cost);
+  p.vpCards -= rule.vp;
+  for (let i = 0; i < rule.vp; i++) G.devDeck.splice(ri(G.devDeck.length + 1), 0, 'victory');
   const at = pieceAt(what, id);
   const victim = what === 'road' ? at.road : at.owner;
   const before = G.longestOwner;
@@ -2327,6 +2336,7 @@ function serializeState(){
       id:p.id, bot:p.bot, name:p.name, res:{ ...p.res },
       devs:p.devs.slice(), bought:p.boughtThisTurn.slice(),
       knights:p.knights, vpCards:p.vpCards, vpBonus:p.vpBonus || 0, ownUnlocked:!!p.ownUnlocked,
+      ownableUnlocked:!!p.ownableUnlocked,
       stock:{ ...p.stock }, ports:[ ...p.ports ]
     })),
     // sparse: only corners and edges that are actually claimed; the last
@@ -2413,6 +2423,7 @@ function applyState(snap){
     p.vpCards = sp.vpCards || 0;
     p.vpBonus = sp.vpBonus || 0;
     p.ownUnlocked = !!sp.ownUnlocked;
+    p.ownableUnlocked = !!sp.ownableUnlocked;
     p.stock = { ...STOCK, ...(sp.stock || {}) };
     p.ports = new Set(sp.ports || []);
   });
@@ -2708,13 +2719,20 @@ function botWishlist(pid){
   const exp = botExpansion(pid);
   if (p.stock.road > 0 && exp && exp.nextEdge !== null) wish.push('road');
   if (G.devDeck.length) wish.push('dev');
-  // a plan to own a piece needs a victory point card first, and maybe a road
+  // a plan to own a piece needs its resources, a victory point card, and maybe a road
   const plan = G.extension ? botPlans[pid] : null;
   if (plan){
+    wish.unshift('own');
     if (p.vpCards < 1 && G.devDeck.length) wish.unshift('dev');
     if (plan.roadFirst >= 0) wish.unshift('road');
   }
   return wish.length ? [...new Set(wish)] : ['dev'];
+}
+// What one wishlist entry costs; 'own' is the price of the bot's planned takeover.
+function botWishCost(pid, target){
+  if (target !== 'own') return COST[target];
+  const plan = botPlans[pid];
+  return plan ? TAKEOVER[plan.what].cost : {};
 }
 
 // How badly this bot wants each resource right now.
@@ -2723,7 +2741,7 @@ function botNeed(pid){
   const need = { lumber:0, brick:0, wool:0, grain:0, ore:0 };
   let weight = 3;
   for (const target of botWishlist(pid).slice(0, 3)){
-    for (const [r, n] of Object.entries(COST[target]))
+    for (const [r, n] of Object.entries(botWishCost(pid, target)))
       need[r] += Math.max(0, n - p.res[r]) * weight;
     weight = Math.max(1, weight - 1);
   }
@@ -2741,7 +2759,7 @@ function botBankTrade(pid){
   const p = G.players[pid];
   const need = botNeed(pid);
   const target = botWishlist(pid)[0];
-  const short = Object.entries(COST[target]).find(([r,n]) => p.res[r] < n);
+  const short = Object.entries(botWishCost(pid, target)).find(([r,n]) => p.res[r] < n);
   if (!short) return null;
 
   let best = null;
@@ -4410,8 +4428,8 @@ ${extension ? `
   <p>This game adds three actions. All are only on your own turn, after the roll, and you may
      use them <b>as many times as you can pay for</b>. With the 30-second clock on, each one
      starts the clock again.</p>
-  <p><b>Own</b> — pay <b>1 victory point card</b> to take over a rival's piece. The card goes
-     back into the deck, and the price is the same for a road, a settlement and a city. The
+  <p><b>Own</b> — pay <b>1 victory point card</b> and <b>3 times what the piece costs to
+     build</b> to take over a rival's piece. The card goes back into the deck. The
      owner does not have to agree. Your own piece replaces theirs: a road for a road, a
      settlement for a settlement, a city for a city. It comes out of your supply, so you need
      one left, and their piece goes back to their supply.</p>
@@ -4419,13 +4437,14 @@ ${extension ? `
   ${row('Settlement', TAKEOVER.settlement.cost, `Own a settlement: ${ownPrice('settlement')}.`)}
   ${row('City', TAKEOVER.city.cost, `Own a city: ${ownPrice('city')}.`)}
   <p><b>Who can Own:</b> only a player with <b>${OWN_MIN_POINTS} or more points</b>, and only
-     against a rival who also has ${OWN_MIN_POINTS} or more. A player below ${OWN_MIN_POINTS}
-     points is safe: none of their pieces can be taken. Your own total counts your hidden
-     victory point cards; a rival's counts only the points everyone can see. The count is
-     taken before you pay the card. Once you have reached ${OWN_MIN_POINTS} points, you keep the
-     right to Own for the rest of the game, even if you drop below ${OWN_MIN_POINTS} again.</p>
-  <p><b>Where:</b> a road must join one of your own roads, and one of your roads must lead to
-     a settlement or city you take.</p>
+     against a rival who has also shown ${OWN_MIN_POINTS} or more. A player who never reached
+     ${OWN_MIN_POINTS} points is safe: none of their pieces can be taken. Your own total counts
+     your hidden victory point cards; a rival's counts only the points everyone can see. The
+     count is taken before you pay the card. Both of these last: once you have reached
+     ${OWN_MIN_POINTS} points you keep the right to Own, and once a rival has shown
+     ${OWN_MIN_POINTS} points their pieces stay open to it, even after dropping below again.</p>
+  <p><b>Where:</b> a road must join one of your own roads or buildings, and one of your roads
+     must lead to a settlement or city you take.</p>
   <p>Longest Road, docks and everyone's score are worked out again at once. Roads and buildings
      left behind stay where they are, even if they no longer connect.</p>
   <p><b>Fortification</b> — pay what one of your own pieces costs to build, and it takes one
@@ -4560,7 +4579,7 @@ function actionSpecs(){
       label:'OWN', armed: owning, danger:true,
       why: owning ? null : (blocked || extBlocked(p.id)),
       what: owning ? 'Stop and go back to your turn.'
-        : `Pay 1 victory point card to replace a rival’s road, settlement or city with your own, or knock off one fortification. Needs ${OWN_MIN_POINTS} points, and the rival needs ${OWN_MIN_POINTS} too.`,
+        : `Pay 1 victory point card and 3× the build cost to replace a rival’s road, settlement or city with your own, or knock off one fortification. Needs ${OWN_MIN_POINTS} points, and the rival must have shown ${OWN_MIN_POINTS} too.`,
       on:()=> owning ? cancelMode() : openOwnTray() });
     const fortifying = mode?.type === 'fortify';
     list.push({
@@ -4830,9 +4849,9 @@ const MODE_COPY = {
     sub:'Click any hex except the one it sits on or one a police officer guards. That tile stops producing, and you steal a card from someone building there.' }),
   own: what => what === 'road'
     ? { title:'Choose a rival road to own',
-        sub:'Red bars mark rival roads that join one of your roads. Only rivals with ' + OWN_MIN_POINTS + ' or more points. A fortified one only loses one step. You confirm the payment next.' }
+        sub:'Red bars mark rival roads that join one of your roads or buildings. Only rivals who have shown ' + OWN_MIN_POINTS + ' or more points. A fortified one only loses one step. You confirm the payment next.' }
     : { title:`Choose a rival ${what} to own`,
-        sub:`Red discs mark rival ${what === 'city' ? 'cities' : 'settlements'} that one of your roads leads to, owned by rivals with ${OWN_MIN_POINTS} or more points. A fortified one only loses one step. You confirm the payment next.` },
+        sub:`Red discs mark rival ${what === 'city' ? 'cities' : 'settlements'} that one of your roads leads to, owned by rivals who have shown ${OWN_MIN_POINTS} or more points. A fortified one only loses one step. You confirm the payment next.` },
   police: moving => moving
     ? { title:'Choose where this officer goes',
         sub:'Click any tile that has no officer and no robber. Moving is free, once per turn.' }
@@ -5547,7 +5566,7 @@ function playDev(card){
 
 /* ---- extension: takeover and fortification ---- */
 const TAKEOVER_RULE = {
-  road:`a road of a rival with ${OWN_MIN_POINTS}+ points that joins one of your roads`,
+  road:`a road of a rival with ${OWN_MIN_POINTS}+ points that joins one of your roads or buildings`,
   settlement:`a settlement of a rival with ${OWN_MIN_POINTS}+ points that one of your roads leads to`,
   city:`a city of a rival with ${OWN_MIN_POINTS}+ points that one of your roads leads to`
 };
@@ -5576,7 +5595,7 @@ function takeoverWhyNot(p, what){
   const short = r.vp - p.vpCards;
   if (!canOwnAtAll(p.id)) return `NEED ${OWN_MIN_POINTS} POINTS`;
   if (!hasSpareOf(p, what)) return `NO SPARE ${PLURAL[what].toUpperCase()}`;
-  if (!ADMIN_FREE() && short > 0) return `NEED ${short} MORE VP CARD${short > 1 ? 'S' : ''}`;
+  if (short > 0) return `NEED ${short} MORE VP CARD${short > 1 ? 'S' : ''}`;
   if (!canAffordTakeover(p, what)) return 'NOT ENOUGH RESOURCES';
   if (!takeoverTargets(p.id, what).length) return `NO RIVAL WITH ${OWN_MIN_POINTS}+ IN REACH`;
   return null;
