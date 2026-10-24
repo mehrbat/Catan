@@ -280,6 +280,7 @@ body.tucked #railR{ display:none }
   min-width:min(420px,60vw);max-width:min(620px,66vw);
 }
 #prompt.show{opacity:1}
+#prompt:not(.show){pointer-events:none}
 #prompt .h{font-size:17px;font-weight:800;letter-spacing:.03em}
 #prompt .s{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:2px}
 #promptCancel{
@@ -426,6 +427,13 @@ body.tucked #railR{ display:none }
                    to{opacity:1;transform:translate(-50%,-50%) scale(1)} }
 @keyframes rollOut{ from{opacity:1} to{opacity:0;transform:translate(-50%,-58%) scale(.95)} }
 @media (prefers-reduced-motion:reduce){ #rollPop.show,#rollPop.out{animation:none;opacity:1} }
+
+/* The hint banner and the roll can be dragged aside on any screen. The drag
+   sets the `translate` property, which adds to their own transforms and
+   animations instead of replacing them. */
+#prompt.show,#rollPop.show{ pointer-events:auto;touch-action:none;cursor:grab }
+#prompt.dragging,#rollPop.dragging{ cursor:grabbing }
+#prompt button{ cursor:pointer }
 
 #admin{
   position:absolute;left:12px;top:120px;width:250px;height:420px;
@@ -4239,10 +4247,14 @@ function showRoll(pid, a, b){
         ? 'collect from every matching tile'
         : 'nothing produces');
 
-  clearTimeout(rollPopTimer);
   pop.classList.remove('out');
   pop.classList.add('show');
+  hideRollSoon();
+}
+function hideRollSoon(){
+  clearTimeout(rollPopTimer);
   rollPopTimer = setTimeout(()=>{
+    const pop = $('rollPop');
     pop.classList.remove('show');
     pop.classList.add('out');
   }, 1750);
@@ -4952,6 +4964,56 @@ addEventListener('resize', updateMovableToasts);
   elToasts.addEventListener('pointerup', stopDrag);
   elToasts.addEventListener('pointercancel', stopDrag);
 })();
+
+// The hint banner and the roll sit over the board; on a phone they can cover
+// most of it, so either can be dragged aside on any screen. The new spot is
+// kept for the next hint or roll; a double-click puts it back.
+function makeDraggable(el, { onGrab, onDrop } = {}){
+  let dx = 0, dy = 0, grab = null;
+  const place = () => { el.style.translate = `${dx}px ${dy}px`; };
+  // where it sits undragged, and how big it is
+  const home = () => {
+    const r = el.getBoundingClientRect();
+    return { left:r.left - dx, top:r.top - dy, w:r.width, h:r.height };
+  };
+  // keep the whole panel on screen
+  const clampTo = (x, y, at) => {
+    dx = clamp(x, -at.left, Math.max(-at.left, innerWidth - at.left - at.w));
+    dy = clamp(y, -at.top, Math.max(-at.top, innerHeight - at.top - at.h));
+    place();
+  };
+  el.addEventListener('pointerdown', e => {
+    // a press on a button stays a press
+    if (e.button > 0 || e.target.closest('button')) return;
+    grab = { x:e.clientX - dx, y:e.clientY - dy, at:home() };
+    el.classList.add('dragging');
+    el.setPointerCapture?.(e.pointerId);
+    onGrab?.();
+  });
+  el.addEventListener('pointermove', e => {
+    if (grab) clampTo(e.clientX - grab.x, e.clientY - grab.y, grab.at);
+  });
+  const drop = () => {
+    if (!grab) return;
+    grab = null;
+    el.classList.remove('dragging');
+    onDrop?.();
+  };
+  el.addEventListener('pointerup', drop);
+  el.addEventListener('pointercancel', drop);
+  el.addEventListener('dblclick', e => {
+    if (e.target.closest('button')) return;
+    dx = dy = 0; place();
+  });
+  // a smaller window must not leave it off screen
+  addEventListener('resize', () => {
+    const at = home();
+    if (at.w) clampTo(dx, dy, at);
+  });
+}
+makeDraggable(elPrompt);
+// the roll stays up while it is held, and fades as usual once let go
+makeDraggable($('rollPop'), { onGrab:() => clearTimeout(rollPopTimer), onDrop:hideRollSoon });
 
 // One finger turns the table, two fingers pinch to zoom, a finger that barely
 // moved is a tap. Tracking pointers by id is what makes all three coexist.
