@@ -1090,7 +1090,7 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
         </label>
         <label class="optRow">
           <input type="checkbox" id="playTimeout">
-          <span>End turns after 30s of inactivity</span>
+          <span>1-minute total play clock per player</span>
         </label>
         <label class="optRow">
           <input type="checkbox" id="playUnlimited">
@@ -1140,7 +1140,7 @@ body.movableToasts #toasts.dragging{ cursor:grabbing }
         </label>
         <label class="optRow">
           <input type="checkbox" id="hostTimeout">
-          <span>End turns after 30s of inactivity</span>
+          <span>1-minute total play clock per player</span>
         </label>
         <label class="optRow">
           <input type="checkbox" id="hostUnlimited">
@@ -1506,7 +1506,7 @@ const G = {
   turnEndsAt: 0,              // host's clock; everyone counts down against it
   discardEndsAt: 0,           // host's clock for a seven's discards (0 = not running)
   autoRoll: false,            // host-selected game option
-  turnSeconds: 0,             // host-selected inactivity timeout (0 = off)
+  turnSeconds: 0,             // total seconds each player may use (0 = off)
   unlimitedDevs: false,       // host-selected: the development deck never runs out
   extension: false,           // host-selected: takeover, fortification and police are on
   extSeq: 0,                  // counts extension actions, so every screen can tell of a new one
@@ -1552,6 +1552,7 @@ function newGame(nPlayers, seed, initialWinVP = defaultWinVP(nPlayers), unlimite
   G.rollSeq = 0; G.rollBy = -1; G.awaitRobber = -1; G.turnEndsAt = 0;
   G.robberReturn = 'main'; G.vote = null; G.forceRoll = 0;
   G.autoRoll = false; G.turnSeconds = 0;
+  G.timeUsed = Array(nPlayers).fill(0);
   G.extension = false; G.extSeq = 0; G.recentExt = [];
   G.police = []; G.policeMoved = false;
   for (const k of Object.keys(botPlans)) delete botPlans[k];
@@ -2284,6 +2285,7 @@ function rollDice(){
   return G.lastRoll;
 }
 function endTurn(){
+  flushPlayerClock();
   const p = cur();
   p.boughtThisTurn = [];
   G.offer = null;                 // an offer does not outlive the turn
@@ -2337,7 +2339,8 @@ function serializeState(){
                        get:{ ...G.offer.get }, replies:{ ...G.offer.replies } } : null,
     rollSeq: G.rollSeq, rollBy: G.rollBy,
     awaitRobber: G.awaitRobber, robberReturn: G.robberReturn, turnEndsAt: G.turnEndsAt,
-    autoRoll: G.autoRoll, turnSeconds: G.turnSeconds, unlimitedDevs: !!G.unlimitedDevs,
+    autoRoll: G.autoRoll, turnSeconds: G.turnSeconds, timeUsed: (G.timeUsed || []).slice(),
+    unlimitedDevs: !!G.unlimitedDevs,
     extension: !!G.extension, extSeq: G.extSeq || 0,
     police: G.police.map(c => [c.owner, c.tile]), policeMoved: !!G.policeMoved,
     recentExt: (G.recentExt || []).map(r => ({ ...r })),
@@ -2399,6 +2402,8 @@ function applyState(snap){
   G.robberReturn = snap.robberReturn || 'main';
   G.autoRoll = !!snap.autoRoll;
   G.turnSeconds = snap.turnSeconds || 0;
+  G.timeUsed = (snap.timeUsed || []).slice();
+  while (G.timeUsed.length < G.players.length) G.timeUsed.push(0);
   G.unlimitedDevs = !!snap.unlimitedDevs;
   G.extension = !!snap.extension;
   G.extSeq = snap.extSeq || 0;
@@ -4446,8 +4451,7 @@ function rulesHTML(target = WIN_VP, extension = G.extension){
 ${extension ? `
   <h3>Extension</h3>
   <p>This game adds three actions. All are only on your own turn, after the roll, and you may
-     use them <b>as many times as you can pay for</b>. With the 30-second clock on, each one
-     starts the clock again.</p>
+     use them <b>as many times as you can pay for</b>.</p>
   <p><b>Own</b> — pay <b>1 victory point card</b> and <b>3 times what the piece costs to
      build</b> to take over a rival's piece. The card goes back into the deck. The
      owner does not have to agree. Your own piece replaces theirs: a road for a road, a
@@ -5976,8 +5980,8 @@ function doRoll(countActivity = true){
       setTimeout(()=>{
         diceSettling = false;          // from here awaitRobber / discardDue say what is owed
         startDiscardClock();
-        renderAll();                   // everyone who owes gets their own tray
         if (!discardsOutstanding()) afterDiscards();
+        renderAll();
       }, 900);
     } else {
       const gains = produce(roll);
@@ -6004,8 +6008,6 @@ function beginRobber(pid){
   // A knight can be played before rolling. Forcing 'main' afterwards used to
   // swallow the roll entirely, so remember where we came from.
   G.robberReturn = G.phase === 'roll' ? 'roll' : 'main';
-  // with the inactivity clock on, a human gets a full window to move the robber
-  if (!isBot(pid)){ turnPauseStartedAt = 0; refreshTurnDeadline(); }
   if (isOnline() && pid !== NET.seat && !isBot(pid)){ renderAll(); return; }
   if (!isBot(pid)){ armPlacement('robber', { pid, forced:true }); return; }
   botSoon(()=>{
@@ -6021,7 +6023,6 @@ function resolveRobber(tileId, pid, timedOut=false){
   if (G.awaitRobber !== pid || discardsOutstanding()) return;
   if (guarded(tileId)) return;   // an officer keeps the robber off this tile
   G.awaitRobber = -1;
-  refreshTurnDeadline();      // moving the robber counts as activity
   G.robber = tileId;
   reachFor(pid, tiles[tileId].x, tiles[tileId].z, () => moveRobberMesh(tileId));
   mode = null; clearNodes(); hidePrompt();
@@ -6130,24 +6131,33 @@ function botDoSetup(pid){
 // Single entry point for "a turn is now starting" — hands off to the bot
 // driver or leaves the board to the human.
 let turnTicker = null, autoRollTimer = null;
-let turnPauseStartedAt = 0;
+let playerClockStartedAt = 0;
+let turnExpiring = false;
+let turnTimedOut = false;
 
-function noteTurnActivity(seat = G.turn){
-  if (!iAmHost() || !G.turnSeconds) return;
-  if (seat !== G.turn || (G.phase !== 'roll' && G.phase !== 'main')) return;
-  refreshTurnDeadline();
-}
+function noteTurnActivity(_seat){}
 function refreshTurnDeadline(){
   if (!iAmHost() || !G.turnSeconds) return;
-  G.turnEndsAt = Date.now() + G.turnSeconds * 1000;
+  const used = (G.timeUsed && G.timeUsed[G.turn]) || 0;
+  const left = Math.max(0, G.turnSeconds * 1000 - used);
+  G.turnEndsAt = Date.now() + left;
 }
 
 // The host owns the clock. Everyone else counts down against the deadline it
 // broadcasts, so the number on screen agrees to within a second.
+function flushPlayerClock(){
+  if (!playerClockStartedAt || !G.turnSeconds) return;
+  if (!G.timeUsed) G.timeUsed = Array(G.players.length).fill(0);
+  const elapsed = Date.now() - playerClockStartedAt;
+  G.timeUsed[G.turn] = (G.timeUsed[G.turn] || 0) + elapsed;
+  playerClockStartedAt = 0;
+}
 function startTurnClock(){
   clearInterval(turnTicker);
   turnTicker = null;
-  turnPauseStartedAt = 0;
+  playerClockStartedAt = 0;
+  turnExpiring = false;
+  turnTimedOut = false;
   if (!G.turnSeconds){
     G.turnEndsAt = 0;
     const el = $('turnClock');
@@ -6155,12 +6165,18 @@ function startTurnClock(){
     showBigClock(-1);
     return;
   }
-  if (!clockPaused()) refreshTurnDeadline();
+  if (!clockPaused()){
+    refreshTurnDeadline();
+    playerClockStartedAt = Date.now();
+  }
   turnTicker = setInterval(tickTurnClock, 250);
 }
 function clockPaused(){
   if (ADMIN_PAUSE) return true;
-  return G.phase !== 'roll' && G.phase !== 'main' || discardsOutstanding();
+  if (G.phase !== 'roll' && G.phase !== 'main') return true;
+  if (discardsOutstanding()) return true;
+  if (G.offer) return true;
+  return false;
 }
 // A choice or an offer left open when the turn clock runs out is dropped, so
 // the turn can move on: a card's choice is cancelled and the card goes back to
@@ -6203,60 +6219,60 @@ function showBigClock(left, caption = ''){
 function tickTurnClock(){
   if (!G.turnSeconds){ showBigClock(-1); return; }
   const el = $('turnClock');
-  // a seven's discards run on their own clock while the turn clock waits
   if (discardsOutstanding() && G.discardEndsAt && !ADMIN_PAUSE){
-    if (!turnPauseStartedAt) turnPauseStartedAt = Date.now();
+    if (playerClockStartedAt){ flushPlayerClock(); }
     const left = Math.max(0, Math.ceil((G.discardEndsAt - Date.now()) / 1000));
     if (el){ el.textContent = `${left}s`; el.classList.toggle('low', left <= 8); }
     showBigClock(left, 'DISCARD');
     if (left <= 0 && iAmHost()) discardForIdle();
     return;
   }
-  if (!G.turnEndsAt){ if (el) el.textContent = ''; showBigClock(-1); return; }
   if (clockPaused()){
-    const resettablePause = ADMIN_PAUSE || discardsOutstanding();
-    if (resettablePause && !turnPauseStartedAt) turnPauseStartedAt = Date.now();
+    if (playerClockStartedAt){ flushPlayerClock(); }
     if (el) el.textContent = '';
     showBigClock(-1);
     return;
   }
-  if (turnPauseStartedAt){
-    const pausedFor = Date.now() - turnPauseStartedAt;
-    turnPauseStartedAt = 0;
-    if (!iAmHost()){ if (el) el.textContent = ''; showBigClock(-1); return; }
-    G.turnEndsAt += pausedFor;
+  if (!playerClockStartedAt){
+    playerClockStartedAt = Date.now();
+    refreshTurnDeadline();
     if (NET.mode === 'host' && NET.ready) netPush();
   }
+  if (!G.turnEndsAt){ if (el) el.textContent = ''; showBigClock(-1); return; }
   const left = Math.max(0, Math.ceil((G.turnEndsAt - Date.now()) / 1000));
   if (el){
     el.textContent = `${left}s`;
     el.classList.toggle('low', left <= 8);
   }
-  // bots are never timed, so only a human's clock goes up large
   const owner = G.awaitRobber >= 0 ? G.awaitRobber : G.turn;
   if (isBot(owner)) showBigClock(-1);
   else showBigClock(left, (G.players[owner].name + (G.awaitRobber >= 0 ? ' · robber' : '')).toUpperCase());
   if (left > 0 || !iAmHost()) return;
 
-  // a robber move left too long is made for that player
+  if (diceSettling || turnExpiring) return;
+
+  flushPlayerClock();
+  turnExpiring = true;
+
   if (G.awaitRobber >= 0){
     const pid = G.awaitRobber;
-    if (isBot(pid)) return;
-    log(`${nameOf(pid)} ran out of time`);
+    if (isBot(pid)){ turnExpiring = false; return; }
+    if (!turnTimedOut) log(`${nameOf(pid)} ran out of time`);
+    turnTimedOut = true;
     resolveRobber(timeoutRobberTile(pid), pid, true);
-    // and the turn ends with it — unless a knight played before rolling means
-    // the roll is still owed, in which case the dice are thrown for them first
+    turnExpiring = false;
     if (pid !== G.turn || G.pending) return;
     if (G.phase === 'main') doEndTurn();
     else if (G.phase === 'roll') doRoll(false);
     return;
   }
-  if (isBot(G.turn)) return;
+  if (isBot(G.turn)){ turnExpiring = false; return; }
 
-  log(`${nameOf(G.turn)} ran out of time`);
-  refreshTurnDeadline();       // avoid retriggering while the roll animation or a nested render runs
+  if (!turnTimedOut) log(`${nameOf(G.turn)} ran out of time`);
+  turnTimedOut = true;
   closeIdleChoices();
-  if (G.phase === 'over') return;            // a last robbery can win the game
+  turnExpiring = false;
+  if (G.phase === 'over') return;
   if (G.phase === 'roll') doRoll(false);
   else doEndTurn();
 }
@@ -6377,10 +6393,10 @@ function botDiscardAll(){
   }
 }
 
-// With the inactivity clock on, everyone who owes a discard gets one window.
+// With the play clock on, everyone who owes a discard gets one window.
 function startDiscardClock(){
   if (!iAmHost() || !G.turnSeconds || !discardsOutstanding()) return;
-  G.discardEndsAt = Date.now() + G.turnSeconds * 1000;
+  G.discardEndsAt = Date.now() + Math.min(G.turnSeconds, 30) * 1000;
 }
 
 // When it runs out, whoever has not paid discards the way a bot would.
@@ -6860,7 +6876,7 @@ $('startBtn').onclick = ()=>{
   botStop();
   newGame(seatCount, undefined, playWinVP, playUnlimited);
   G.autoRoll = !!playAutoRoll;
-  G.turnSeconds = playTimeout ? 30 : 0;
+  G.turnSeconds = playTimeout ? 60 : 0;
   G.extension = !!playExtension;
   // seat 0 is always you; the rest are bots unless you asked for pass & play
   for (const p of G.players) p.bot = vsBots && p.id !== 0;
@@ -6990,7 +7006,7 @@ async function netHost(seatCount, myName, makePublic, winVP=defaultWinVP(seatCou
   botStop();
   newGame(seatCount, undefined, hostWinVP, hostUnlimited);
   G.autoRoll = hostAutoRoll;
-  G.turnSeconds = hostTimeout ? 30 : 0;
+  G.turnSeconds = hostTimeout ? 60 : 0;
   G.extension = hostExtension;
   G.players.forEach(p => { p.bot = false; });
   G.players[0].name = NET.myName;
@@ -7729,8 +7745,8 @@ function hostBriefing(){
           Everyone else follows what you send them, so if you close this tab the
           table stops. Leave it open until you are done.</p>
         <p style="margin-bottom:9px"><b style="color:var(--ink)">Need to move things along?</b>
-          If you enabled inactivity timeout, idle turns are moved along automatically
-          (a missed roll is rolled first, then inactivity can still end the turn). If it is off, type
+          If you enabled the play clock, each player has 1 minute total — the clock
+          pauses while waiting for trade replies, and a turn ends when time runs out. If it is off, type
           <b style="color:var(--ink)">/voteskip</b> in chat to put it to the table. Everyone
           else presses <b style="color:var(--ink)">1</b> for yes or <b style="color:var(--ink)">2</b>
           for no, and a majority carries it.</p>
