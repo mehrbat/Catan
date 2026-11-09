@@ -6158,6 +6158,7 @@ function startTurnClock(){
   playerClockStartedAt = 0;
   turnExpiring = false;
   turnTimedOut = false;
+  if (G.timeUsed) G.timeUsed[G.turn] = 0;
   if (!G.turnSeconds){
     G.turnEndsAt = 0;
     const el = $('turnClock');
